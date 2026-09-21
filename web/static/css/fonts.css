@@ -1,52 +1,73 @@
 /* ─────────────────────────────────────────────────────────────
    字型載入
    ─────────────────────────────────────────────────────────────
-   這個檔案刻意獨立出來，因為字型是最可能反覆調整的部分。
-   決定之後（Phase 5.7）會把這裡換成自架的 woff2 + subset，
+   決定方案之後（Phase 5.7）會把這裡換成自架的 woff2 + subset，
    到時候只動這一個檔，main.css 完全不用改。
 
-   目前提供四套，由 <html data-font="..."> 切換，預設 a。
+   ⚠️ 字型堆疊的順序規則（踩過一次，寫下來）
+   ─────────────────────────────────────────
+   瀏覽器是「逐字」往後找字型的。所以整串的順序必須是：
+
+       只有西文的字型  →  中文字型  →  通用字族
+
+   不能把 sans-serif、serif、-apple-system、BlinkMacSystemFont
+   夾在中間 —— 這些在 macOS 上「都涵蓋中文」，中文字碰到它們就被
+   蘋方接走，後面指定的思源黑體／宋體永遠輪不到。
+
+   同理，Inter 雖然沒有中文，但 -apple-system 有，所以
+   'Inter', -apple-system, …, 'Noto Serif TC' 這種寫法
+   中文永遠是蘋方，換 Noto Serif TC 完全沒效果。
    ───────────────────────────────────────────────────────────── */
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;600;700&family=Noto+Serif:ital,wght@0,400;0,600;1,400&display=swap');
 
 :root {
-  /* 中文字型永遠墊在英文字型後面。
-     瀏覽器是「逐字」找字型的：英文字用 Inter，Inter 沒有的中文字自動掉到 Noto Sans TC。
-     所以順序寫反的話，中文字型裡那些品質較差的西文字母就會被拿來用。 */
-  --font-zh: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
-  --font-zh-serif: 'Noto Serif TC', 'Songti TC', serif;
+  /* ── 第一段：只涵蓋西文的字型（絕不含通用字族）────────── */
+  --latin-sans:  'Inter';
+  --latin-serif: 'Noto Serif';
+  --latin-mono:  'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas;
 
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* ── 第二段：中文字型 ──────────────────────────────── */
+  --zh-sans:  'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei';
+  --zh-serif: 'Noto Serif TC', 'Songti TC', 'PMingLiU';
 
-  /* 預設方案 A：標題用 JetBrains Mono，內文用 Inter */
-  --font-heading: var(--font-mono), var(--font-zh);
-  --font-body: var(--font-sans), var(--font-zh);
-  --font-code: var(--font-mono), var(--font-zh);
-
-  --heading-tracking: -0.015em;
-  --body-tracking: 0;
 }
 
-/* 方案 B — 全站 JetBrains Mono。工程師味最重，但長篇中文會比較吃力。 */
-:root[data-font='b'] {
-  --font-heading: var(--font-mono), var(--font-zh);
-  --font-body: var(--font-mono), var(--font-zh);
+/* ── 組合：通用字族一律收在最後 ───────────────────────────
+   選擇器刻意不綁 :root —— 這樣 data-font 可以套在任何元素上，
+   同一頁就能並排比較四個方案（cmd/preview 的 /fonts 用得到）。 */
+
+/* 方案 A（預設）— 標題等寬、內文黑體 */
+:root,
+[data-font='a'] {
+  --font-heading: var(--latin-mono), var(--zh-sans), sans-serif;
+  --font-body:    var(--latin-sans), var(--zh-sans), sans-serif;
+  --font-code:    var(--latin-mono), var(--zh-sans), monospace;
+  --heading-tracking: -0.015em;
+  --body-tracking: 0;
+  --body-leading: 1.85;
+}
+
+/* 方案 B — 全站等寬。工程師味最重；中文仍是思源黑體（等寬字沒有中文字）。 */
+[data-font='b'] {
+  --font-heading: var(--latin-mono), var(--zh-sans), monospace;
+  --font-body:    var(--latin-mono), var(--zh-sans), monospace;
   --heading-tracking: -0.02em;
   --body-tracking: -0.01em;
 }
 
-/* 方案 C — 標題 JetBrains Mono，內文中文用思源宋體。偏文青、閱讀感最好。 */
-:root[data-font='c'] {
-  --font-heading: var(--font-mono), var(--font-zh);
-  --font-body: var(--font-sans), var(--font-zh-serif);
+/* 方案 C — 內文整段改宋體（中文思源宋體 + 西文 Noto Serif）。
+   西文留黑體、中文換宋體會有明顯的粗細斷裂，所以兩邊一起換。 */
+[data-font='c'] {
+  --font-heading: var(--latin-mono), var(--zh-sans), sans-serif;
+  --font-body:    var(--latin-serif), var(--zh-serif), serif;
   --heading-tracking: -0.015em;
+  --body-leading: 1.95;   /* 宋體筆畫細，行距要再鬆一點才好讀 */
 }
 
-/* 方案 D — JetBrains Mono 只用在程式碼。最保守、最好讀。 */
-:root[data-font='d'] {
-  --font-heading: var(--font-sans), var(--font-zh);
-  --font-body: var(--font-sans), var(--font-zh);
+/* 方案 D — 等寬只用在程式碼。最保守、最好讀。 */
+[data-font='d'] {
+  --font-heading: var(--latin-sans), var(--zh-sans), sans-serif;
+  --font-body:    var(--latin-sans), var(--zh-sans), sans-serif;
   --heading-tracking: -0.025em;
 }

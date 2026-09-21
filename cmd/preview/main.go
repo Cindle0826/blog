@@ -53,6 +53,12 @@ func main() {
 	mux.HandleFunc("GET /about", page(r, "about", func() any { return fixtureAbout(site) }))
 	mux.HandleFunc("GET /search", page(r, "search", func() any { return fixtureSearch(site) }))
 
+	// 字型方案並排比較頁，只有預覽伺服器有
+	mux.HandleFunc("GET /fonts", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(fontsPage))
+	})
+
 	mux.HandleFunc("GET /posts/{slug}", func(w http.ResponseWriter, req *http.Request) {
 		render(w, r, http.StatusOK, "post", fixturePost(site, req.PathValue("slug")))
 	})
@@ -68,7 +74,7 @@ func main() {
 
 	addr := ":" + envOr("PORT", "8080")
 	log.Printf("預覽伺服器啟動 → http://localhost%s", addr)
-	log.Printf("提示：右下角可以切換字型方案與主題")
+	log.Printf("字型方案並排比較 → http://localhost%s/fonts", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
 	}

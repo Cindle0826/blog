@@ -1,0 +1,20 @@
+{{ define "footer" }}
+<footer class="site-footer">
+  <div class="wrap site-footer__inner">
+    <p class="site-footer__copy">
+      © {{ year }} {{ .Site.Author.Name }}
+    </p>
+
+    <ul class="social" aria-label="社群連結">
+      {{- range .Site.Social }}
+      <li>
+        <a class="social__link" href="{{ .Href }}" aria-label="{{ .Label }}"
+           {{- if not (or (eq .Icon "rss") (eq .Icon "email")) }} rel="me noopener" target="_blank"{{ end }}>
+          {{ .Label }}
+        </a>
+      </li>
+      {{- end }}
+    </ul>
+  </div>
+</footer>
+{{ end }}

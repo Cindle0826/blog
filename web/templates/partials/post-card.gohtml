@@ -1,0 +1,45 @@
+{{- /*
+  post-card — 文章卡片。
+
+  用法： {{ template "post-card" dict "Post" $p "Site" $.Site }}
+  參數：
+    Post   PostSummary（必填）
+    Site   Site（必填，用來組絕對路徑）
+*/ -}}
+{{ define "post-card" }}
+{{- $p := .Post }}
+<article class="card">
+  {{- with $p.Cover }}
+  <a class="card__cover" href="/posts/{{ $p.Slug }}" tabindex="-1" aria-hidden="true">
+    <img src="{{ .URL }}" alt="" width="{{ .Width }}" height="{{ .Height }}" loading="lazy" decoding="async">
+  </a>
+  {{- end }}
+
+  <div class="card__body">
+    <h3 class="card__title">
+      <a href="/posts/{{ $p.Slug }}">
+        {{- if $p.Pinned }}<span class="pin" aria-label="置頂">★</span> {{ end -}}
+        {{ $p.Title }}
+      </a>
+    </h3>
+
+    {{- with $p.Summary }}
+    <p class="card__summary">{{ truncate 90 . }}</p>
+    {{- end }}
+
+    <div class="card__meta">
+      <time datetime="{{ isoDate $p.PublishedAt }}">{{ humanDate $p.PublishedAt }}</time>
+      {{- if gt $p.ReadingMin 0 }}
+      <span class="dot" aria-hidden="true">·</span>
+      <span>{{ $p.ReadingMin }} 分鐘</span>
+      {{- end }}
+      {{- if $p.Tags }}
+      <span class="dot" aria-hidden="true">·</span>
+      <span class="card__tags">
+        {{- range $i, $t := $p.Tags }}{{ if $i }}<span aria-hidden="true">, </span>{{ end }}<a href="/tags/{{ $t.Slug }}">{{ $t.Name }}</a>{{ end -}}
+      </span>
+      {{- end }}
+    </div>
+  </div>
+</article>
+{{ end }}

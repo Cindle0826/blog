@@ -1,0 +1,58 @@
+{{ define "content" }}
+<section class="hero">
+  <img class="hero__avatar" src="{{ .Site.Author.Avatar }}" alt="{{ .Site.Author.Name }}"
+       width="104" height="104" fetchpriority="high" decoding="async">
+  <div class="hero__text">
+    <h1 class="hero__name">{{ .Site.Author.Name }}</h1>
+    <p class="hero__role">{{ .Site.Tagline }}</p>
+  </div>
+</section>
+
+{{- with .Intro }}
+<section class="prose intro">
+  {{ safeHTML . }}
+</section>
+{{- end }}
+
+{{- if .RecentPosts }}
+<section class="section">
+  <div class="section__head">
+    <h2 class="section__title">最新文章</h2>
+    <a class="section__more" href="/posts">全部 →</a>
+  </div>
+  <div class="card-list">
+    {{- range .RecentPosts }}
+    {{ template "post-card" dict "Post" . "Site" $.Site }}
+    {{- end }}
+  </div>
+</section>
+{{- end }}
+
+{{- if .RecentNotes }}
+<section class="section">
+  <div class="section__head">
+    <h2 class="section__title">知識庫</h2>
+    <a class="section__more" href="/notes">全部 →</a>
+  </div>
+  <div class="card-list">
+    {{- range .RecentNotes }}
+    {{ template "post-card" dict "Post" . "Site" $.Site }}
+    {{- end }}
+  </div>
+</section>
+{{- end }}
+
+{{- if .TopTags }}
+<section class="section">
+  <div class="section__head">
+    <h2 class="section__title">標籤</h2>
+    <a class="section__more" href="/tags">全部 →</a>
+  </div>
+  <ul class="tag-cloud">
+    {{- range .TopTags }}
+    <li><a class="tag" href="/tags/{{ .Slug }}">{{ .Name }}<span class="tag__count">{{ .Count }}</span></a></li>
+    {{- end }}
+  </ul>
+</section>
+{{- end }}
+{{ end }}

@@ -1,0 +1,52 @@
+/* ─────────────────────────────────────────────────────────────
+   字型載入
+   ─────────────────────────────────────────────────────────────
+   這個檔案刻意獨立出來，因為字型是最可能反覆調整的部分。
+   決定之後（Phase 5.7）會把這裡換成自架的 woff2 + subset，
+   到時候只動這一個檔，main.css 完全不用改。
+
+   目前提供四套，由 <html data-font="..."> 切換，預設 a。
+   ───────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;600&display=swap');
+
+:root {
+  /* 中文字型永遠墊在英文字型後面。
+     瀏覽器是「逐字」找字型的：英文字用 Inter，Inter 沒有的中文字自動掉到 Noto Sans TC。
+     所以順序寫反的話，中文字型裡那些品質較差的西文字母就會被拿來用。 */
+  --font-zh: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  --font-zh-serif: 'Noto Serif TC', 'Songti TC', serif;
+
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* 預設方案 A：標題用 JetBrains Mono，內文用 Inter */
+  --font-heading: var(--font-mono), var(--font-zh);
+  --font-body: var(--font-sans), var(--font-zh);
+  --font-code: var(--font-mono), var(--font-zh);
+
+  --heading-tracking: -0.015em;
+  --body-tracking: 0;
+}
+
+/* 方案 B — 全站 JetBrains Mono。工程師味最重，但長篇中文會比較吃力。 */
+:root[data-font='b'] {
+  --font-heading: var(--font-mono), var(--font-zh);
+  --font-body: var(--font-mono), var(--font-zh);
+  --heading-tracking: -0.02em;
+  --body-tracking: -0.01em;
+}
+
+/* 方案 C — 標題 JetBrains Mono，內文中文用思源宋體。偏文青、閱讀感最好。 */
+:root[data-font='c'] {
+  --font-heading: var(--font-mono), var(--font-zh);
+  --font-body: var(--font-sans), var(--font-zh-serif);
+  --heading-tracking: -0.015em;
+}
+
+/* 方案 D — JetBrains Mono 只用在程式碼。最保守、最好讀。 */
+:root[data-font='d'] {
+  --font-heading: var(--font-sans), var(--font-zh);
+  --font-body: var(--font-sans), var(--font-zh);
+  --heading-tracking: -0.025em;
+}

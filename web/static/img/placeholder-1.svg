@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+  <rect width="800" height="500" fill="#ece5d8"/>
+  <g stroke="#cec4b1" stroke-width="2" fill="none">
+    <path d="M80 400 L80 100 M80 400 L720 400"/>
+    <path d="M120 380 L120 180" stroke="#b0562f" stroke-width="28" opacity=".8"/>
+    <path d="M260 380 L260 240" stroke="#b0562f" stroke-width="28" opacity=".6"/>
+    <path d="M400 380 L400 330" stroke="#b0562f" stroke-width="28" opacity=".45"/>
+    <path d="M540 380 L540 355" stroke="#b0562f" stroke-width="28" opacity=".3"/>
+  </g>
+  <text x="400" y="460" font-family="ui-monospace,Menlo,monospace" font-size="20"
+        fill="#938c81" text-anchor="middle">cold start breakdown</text>
+</svg>

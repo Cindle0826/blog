@@ -1,0 +1,9 @@
+{{ define "content" }}
+<header class="page-head">
+  <h1 class="page-head__title">{{ .Meta.Title }}</h1>
+</header>
+
+<div class="prose">
+  {{ safeHTML .HTML }}
+</div>
+{{ end }}

@@ -1,0 +1,104 @@
+{{ define "content" }}
+{{- $p := .Post }}
+
+{{- if $p.IsDraft }}
+<p class="draft-banner">這是草稿預覽，尚未公開，也不會被搜尋引擎索引。</p>
+{{- end }}
+
+<article class="post">
+  <header class="post__head">
+    {{- if .Meta.Breadcrumb }}
+    <nav class="crumbs" aria-label="麵包屑">
+      <a href="/">首頁</a>
+      {{- range .Meta.Breadcrumb }}
+      <span class="crumbs__sep" aria-hidden="true">/</span>
+      {{- if .Href }}<a href="{{ .Href }}">{{ .Label }}</a>{{ else }}<span aria-current="page">{{ truncate 24 .Label }}</span>{{ end }}
+      {{- end }}
+    </nav>
+    {{- end }}
+
+    <h1 class="post__title">{{ $p.Title }}</h1>
+
+    <div class="post__meta">
+      <time datetime="{{ isoDate $p.PublishedAt }}">{{ humanDate $p.PublishedAt }}</time>
+      {{- if gt $p.ReadingMin 0 }}
+      <span class="dot" aria-hidden="true">·</span><span>{{ $p.ReadingMin }} 分鐘</span>
+      {{- end }}
+      {{- with $p.UpdatedAt }}
+      <span class="dot" aria-hidden="true">·</span>
+      <span>最後更新 <time datetime="{{ isoDate . }}">{{ humanDate . }}</time></span>
+      {{- end }}
+    </div>
+
+    {{- if $p.Tags }}
+    <ul class="tag-cloud tag-cloud--inline">
+      {{- range $p.Tags }}
+      <li><a class="tag" href="/tags/{{ .Slug }}">{{ .Name }}</a></li>
+      {{- end }}
+    </ul>
+    {{- end }}
+  </header>
+
+  {{- with $p.Cover }}
+  <figure class="post__cover">
+    <img src="{{ .URL }}" alt="{{ .Alt }}" width="{{ .Width }}" height="{{ .Height }}"
+         fetchpriority="high" decoding="async">
+    {{- with .Alt }}<figcaption>{{ . }}</figcaption>{{ end }}
+  </figure>
+  {{- end }}
+
+  <div class="post__layout">
+    {{- if $p.TOC }}
+    <aside class="toc" aria-label="目錄">
+      <div class="toc__inner">
+        <p class="toc__title">目錄</p>
+        <ol class="toc__list">
+          {{- range $p.TOC }}
+          <li class="toc__item toc__item--l{{ .Level }}">
+            <a href="#{{ .Anchor }}">{{ .Text }}</a>
+          </li>
+          {{- end }}
+        </ol>
+      </div>
+    </aside>
+    {{- end }}
+
+    {{- /* 文章內文。這裡是唯一原樣輸出 HTML 的地方，
+           後端務必已經用 bluemonday 清洗過。 */}}
+    <div class="prose post__body">
+      {{ safeHTML $p.HTML }}
+    </div>
+  </div>
+</article>
+
+{{- if or $p.Prev $p.Next }}
+<nav class="post-nav" aria-label="上下篇">
+  {{- with $p.Prev }}
+  <a class="post-nav__link post-nav__link--prev" href="/posts/{{ .Slug }}" rel="prev">
+    <span class="post-nav__label">← 上一篇</span>
+    <span class="post-nav__title">{{ truncate 40 .Title }}</span>
+  </a>
+  {{- else }}<span></span>{{ end }}
+
+  {{- with $p.Next }}
+  <a class="post-nav__link post-nav__link--next" href="/posts/{{ .Slug }}" rel="next">
+    <span class="post-nav__label">下一篇 →</span>
+    <span class="post-nav__title">{{ truncate 40 .Title }}</span>
+  </a>
+  {{- else }}<span></span>{{ end }}
+</nav>
+{{- end }}
+
+{{- if $p.Related }}
+<section class="section">
+  <div class="section__head">
+    <h2 class="section__title">相關文章</h2>
+  </div>
+  <div class="card-list">
+    {{- range $p.Related }}
+    {{ template "post-card" dict "Post" . "Site" $.Site }}
+    {{- end }}
+  </div>
+</section>
+{{- end }}
+{{ end }}

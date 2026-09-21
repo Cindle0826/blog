@@ -1,0 +1,29 @@
+{{ define "content" }}
+<header class="page-head">
+  {{- if .Meta.Breadcrumb }}
+  <nav class="crumbs" aria-label="麵包屑">
+    <a href="/">首頁</a>
+    {{- range .Meta.Breadcrumb }}
+    <span class="crumbs__sep" aria-hidden="true">/</span>
+    {{- if .Href }}<a href="{{ .Href }}">{{ .Label }}</a>{{ else }}<span aria-current="page">{{ .Label }}</span>{{ end }}
+    {{- end }}
+  </nav>
+  {{- end }}
+
+  <h1 class="page-head__title">{{ .Heading }}</h1>
+  {{- with .Description }}
+  <p class="page-head__desc">{{ . }}</p>
+  {{- end }}
+</header>
+
+{{- if .Posts }}
+<div class="card-list">
+  {{- range .Posts }}
+  {{ template "post-card" dict "Post" . "Site" $.Site }}
+  {{- end }}
+</div>
+{{ template "pagination" .Pagination }}
+{{- else }}
+<p class="empty">這裡還沒有東西。</p>
+{{- end }}
+{{ end }}

@@ -1,0 +1,25 @@
+{{- /*
+  pagination — 上/下一頁。
+
+  rel="prev" / rel="next" 對 SEO 有用：告訴爬蟲這幾頁是同一個序列，
+  不要當成互相重複的內容。
+*/ -}}
+{{ define "pagination" }}
+{{- if .HasPages }}
+<nav class="pagination" aria-label="分頁">
+  {{- if .PrevURL }}
+  <a class="pagination__link" href="{{ .PrevURL }}" rel="prev">← 上一頁</a>
+  {{- else }}
+  <span class="pagination__link is-disabled" aria-hidden="true">← 上一頁</span>
+  {{- end }}
+
+  <span class="pagination__status">{{ .Page }} / {{ .TotalPages }}</span>
+
+  {{- if .NextURL }}
+  <a class="pagination__link" href="{{ .NextURL }}" rel="next">下一頁 →</a>
+  {{- else }}
+  <span class="pagination__link is-disabled" aria-hidden="true">下一頁 →</span>
+  {{- end }}
+</nav>
+{{- end }}
+{{ end }}

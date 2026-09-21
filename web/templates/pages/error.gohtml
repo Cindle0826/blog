@@ -1,0 +1,10 @@
+{{ define "content" }}
+<section class="error">
+  <p class="error__code">{{ .Code }}</p>
+  <h1 class="error__title">{{ .Message }}</h1>
+  <p class="error__actions">
+    <a class="btn" href="/">回首頁</a>
+    <a class="btn btn--ghost" href="/posts">看看文章</a>
+  </p>
+</section>
+{{ end }}

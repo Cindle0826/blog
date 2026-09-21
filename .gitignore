@@ -1,0 +1,31 @@
+# Go
+/bin/
+/tmp/
+*.test
+*.out
+
+# 憑證 / 機密 — 絕對不要進 git
+*.json.key
+service-account*.json
+.env
+.env.*
+!.env.example
+
+# Firebase
+.firebase/
+.firebaserc
+firebase-debug.log
+
+# Node（後台）
+node_modules/
+web/admin/dist/
+.vite/
+
+# 產生物
+web/static/css/*.min.css
+web/static/search-index.json
+
+# macOS / IDE
+.DS_Store
+.idea/
+.vscode/

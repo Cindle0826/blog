@@ -1,0 +1,21 @@
+{{ define "content" }}
+<header class="page-head">
+  <h1 class="page-head__title">搜尋</h1>
+  <p class="page-head__desc">搜尋完全在你的瀏覽器裡進行，不會送出任何查詢紀錄。</p>
+</header>
+
+{{/* 搜尋由 js/search.js 接手：載入 /search-index.json 後用 MiniSearch 比對。
+     因為是純前端，這頁對 SEO 沒有價值，但保留一個乾淨的殼比較好。 */}}
+<form class="search" role="search" onsubmit="return false">
+  <label class="visually-hidden" for="q">搜尋文章</label>
+  <input id="q" class="search__input" type="search" placeholder="輸入關鍵字…"
+         autocomplete="off" autofocus data-search-input>
+</form>
+
+<div class="card-list" data-search-results></div>
+<p class="empty" data-search-empty hidden>找不到符合的文章。</p>
+{{ end }}
+
+{{ define "body-extra" }}
+<script src="{{ asset "js/search.js" }}" type="module" defer></script>
+{{ end }}

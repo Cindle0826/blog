@@ -1,0 +1,97 @@
+{{- /*
+  base — 所有頁面的外框。
+
+  每個 pages/*.gohtml 都必須 {{define "content"}}，由這裡呼叫。
+  需要額外 <head> 內容的頁面可以額外 {{define "head-extra"}}。
+*/ -}}
+{{ define "base" }}<!DOCTYPE html>
+<html lang="{{ .Site.Lang }}" data-theme="">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  {{- /* ── 基本 SEO ────────────────────────────────── */}}
+  <title>{{ pageTitle .Meta.Title }}</title>
+  <meta name="description" content="{{ .ResolvedDescription }}">
+  <link rel="canonical" href="{{ .Meta.Canonical }}">
+  {{- if .Meta.NoIndex }}
+  <meta name="robots" content="noindex, nofollow">
+  {{- else }}
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  {{- end }}
+
+  {{- /* ── Open Graph（FB / LINE / Slack / Discord 讀這個） ── */}}
+  <meta property="og:site_name" content="{{ .Site.Name }}">
+  <meta property="og:locale" content="{{ .Site.Lang }}">
+  <meta property="og:type" content="{{ .ResolvedOGType }}">
+  <meta property="og:title" content="{{ .Meta.Title }}">
+  <meta property="og:description" content="{{ .ResolvedDescription }}">
+  <meta property="og:url" content="{{ .Meta.Canonical }}">
+  <meta property="og:image" content="{{ .ResolvedOGImage }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  {{- with .Meta.PublishedAt }}
+  <meta property="article:published_time" content="{{ isoDate . }}">
+  {{- end }}
+  {{- with .Meta.UpdatedAt }}
+  <meta property="article:modified_time" content="{{ isoDate . }}">
+  {{- end }}
+
+  {{- /* ── Twitter Card ─────────────────────────────── */}}
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ .Meta.Title }}">
+  <meta name="twitter:description" content="{{ .ResolvedDescription }}">
+  <meta name="twitter:image" content="{{ .ResolvedOGImage }}">
+
+  {{- /* ── 結構化資料 ───────────────────────────────── */}}
+  <script type="application/ld+json">{{ jsonLD .JSONLD }}</script>
+
+  {{- /* ── Feed / 圖示 ─────────────────────────────── */}}
+  <link rel="alternate" type="application/atom+xml" title="{{ .Site.Name }}" href="{{ abs "/feed.xml" }}">
+  <link rel="icon" href="{{ asset "img/favicon.svg" }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ asset "img/apple-touch-icon.png" }}">
+  <meta name="theme-color" content="#f5f1e8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1b1b1f" media="(prefers-color-scheme: dark)">
+
+  {{- /* ── 字型 ──────────────────────────────────────
+       目前指向 Google Fonts，方便快速調整。
+       Phase 5.7 會改成自架 woff2 + preload：少一次跨網域連線，
+       LCP 通常可以再快 100–200ms，而且不必讓訪客連到 Google。 */}}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="{{ asset "css/fonts.css" }}">
+  <link rel="stylesheet" href="{{ asset "css/main.css" }}">
+
+  {{- /* ── 主題切換：必須 inline 且放在 CSS 之後、body 之前 ──
+       如果拉成外部檔案或延後執行，深色模式使用者會先看到一閃的白底。
+       這叫 FOUC，體感很差，而且會被 Lighthouse 抓到。 */}}
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('theme');
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme = saved || (prefersDark ? 'dark' : 'light');
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    })();
+  </script>
+
+  {{- block "head-extra" . }}{{ end }}
+</head>
+<body>
+  <a class="skip-link" href="#main">跳至主要內容</a>
+
+  {{ template "header" . }}
+
+  <main id="main" class="wrap">
+    {{ template "content" . }}
+  </main>
+
+  {{ template "footer" . }}
+
+  <script src="{{ asset "js/app.js" }}" defer></script>
+  {{- block "body-extra" . }}{{ end }}
+</body>
+</html>
+{{ end }}

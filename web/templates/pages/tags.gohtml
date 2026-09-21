@@ -1,0 +1,12 @@
+{{ define "content" }}
+<header class="page-head">
+  <h1 class="page-head__title">標籤</h1>
+  <p class="page-head__desc">共 {{ len .Tags }} 個主題。</p>
+</header>
+
+<ul class="tag-cloud tag-cloud--large">
+  {{- range .Tags }}
+  <li><a class="tag" href="/tags/{{ .Slug }}">{{ .Name }}<span class="tag__count">{{ .Count }}</span></a></li>
+  {{- end }}
+</ul>
+{{ end }}

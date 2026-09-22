@@ -1,0 +1,17 @@
+# 複製成 terraform.tfvars（已 gitignore）再填真實值。
+#
+#   cp terraform.tfvars.example terraform.tfvars
+
+# gcloud billing accounts list
+billing_account = "XXXXXX-XXXXXX-XXXXXX"
+
+# 站台的公開網址，不要結尾斜線。
+#
+# 第一次 apply 時 Cloud Run 的網址還不存在，所以先留空，
+# apply 完之後用 `terraform output -raw cloud_run_url` 拿到網址填回來，
+# 再 apply 一次。自訂網域上線後改成 https://cindle.dev。
+#
+# 這個值會變成 view.Site.BaseURL —— 所有 canonical URL、og:image、
+# sitemap 都從它組出來。填錯的話 SEO 會整個歪掉，但網站看起來正常，
+# 不容易發現。
+site_base_url = ""

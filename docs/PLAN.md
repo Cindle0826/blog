@@ -32,12 +32,22 @@
 
 ## Phase 0 — 前置作業　`cindle`
 
-- [ ] 0.1　建立新的 GCP 專案（不要用 `line-bot-503410`，計費要隔離）
-- [ ] 0.2　升級 Blaze **並設定 Budget Alert $1** ← 一定要在 0.3 之前
-- [ ] 0.3　啟用 API：Cloud Run / Firestore / Firebase Hosting / Storage / Artifact Registry
-- [ ] 0.4　`npm i -g firebase-tools` 然後 `firebase login`
-- [ ] 0.5　註冊網域並指向 Firebase Hosting
-- [x] 0.6　建立 repo、`go mod init`、`.gitignore`
+基礎設施改由 Terraform 管理，見 [`../infrastruct_as_code/`](../infrastruct_as_code/)。
+結構與 `line-bot-ledger` 相同。
+
+- [x] 0.1　建立 GCP 專案 `cindle-blog`（專案編號 802326727219）
+- [x] 0.2　寫好 IaC（Terraform + 腳本）
+- [ ] 0.3　`./scripts/00-prereqs.sh` — 接計費帳戶
+- [ ] 0.4　`./scripts/01-state-bucket.sh` — 建 state bucket
+- [ ] 0.5　填 `terraform.tfvars`，跑 `./scripts/02-apply.sh --apply`
+      （預算警示、Firestore、索引、Artifact Registry、上傳 bucket、Cloud Run 一次建好）
+- [ ] 0.6　`./scripts/03-local-dev-auth.sh` — 本機 ADC
+- [ ] 0.7　Console 手動開 Firebase Auth 的 Google 登入（無 Terraform 資源）
+- [ ] 0.8　`npm i -g firebase-tools` 然後 `firebase login`
+- [ ] 0.9　註冊 `cindle.dev` 並指向 Firebase Hosting
+- [x] 0.10　建立 repo、`go mod init`、`.gitignore`
+
+隨時可以跑 `./scripts/verify.sh` 看目前狀態（唯讀，約 8 秒）。
 
 ## Phase 1 — 凍結契約　`Claude`
 

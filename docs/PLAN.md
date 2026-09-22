@@ -135,7 +135,7 @@ Firebase 的跨 provider 帳號合併行為會不會保留 UID。
 - [ ] Phase 4.6 登入後取得真正的 UID，填回 `terraform.tfvars`
 
 在那之前 `ADMIN_UIDS` 是空的。這不擋任何事——`/api/*` 要等 4.3 才存在。
-需要測 API 時用 Firebase Auth 模擬器，UID 填在本機 `.env`，與正式環境隔離。
+需要測 API 時用 Firebase Auth 模擬器，做法見 [`LOCAL-AUTH.md`](LOCAL-AUTH.md)。
 - [ ] 4.7　文章 CRUD 介面　`Claude`
 - [ ] 4.8　CodeMirror 6 分割即時預覽　`Claude`
 - [ ] 4.9　自動存草稿、圖片拖放　`Claude`

@@ -2,8 +2,13 @@
 #
 # 用 GoLand 內建的 HTTP Client 跑（點每個請求左邊的 ▶）。
 # 變數分兩個檔：
-#   http-client.env.json          公開值，進版控
-#   http-client.private.env.json  ID token 這類短期憑證，已 gitignore
+#   http-client.env.json          結構性的值（專案 ID、API 位置），進版控
+#   http-client.private.env.json  API key 與 token，不進版控
+#
+# private 那個由 ./infrastruct_as_code/scripts/04-local-env.sh 產生。
+# firebaseApiKey 嚴格說不是機密（它會被編進前端 bundle，訪客看原始碼就有），
+# 但「本來就會公開」不等於「應該寫進版控」——它能從 terraform output 拿到，
+# commit 進去對一人專案沒有任何便利，只是徒增 repo 公開時的暴露面。
 #
 # 開始之前先拿一個 ID token：
 #   1. cd ~/go-projects/blog && python3 -m http.server 8000

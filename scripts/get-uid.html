@@ -17,7 +17,7 @@
   必須用 http://localhost 開，不能用 file://——Firebase 的授權網域清單
   裡是 localhost，而 file:// 的 origin 是 null，會被擋下。
 
-  裡面的設定值不是機密，見 docs/LOCAL-AUTH.md。
+  設定讀自 get-uid.config.js（不進版控），由 04-local-env.sh 從 terraform output 產生。
 -->
 <html lang="zh-Hant">
 <head>
@@ -94,23 +94,29 @@
 
 <p class="hint">
   登入後在 Postman 帶上 <code>Authorization: Bearer &lt;ID token&gt;</code> 就能測 <code>/api/*</code>。<br>
-  這裡的設定值不是機密，說明見 <code>docs/LOCAL-AUTH.md</code>。
+  設定讀自 <code>get-uid.config.js</code>，由 <code>04-local-env.sh</code> 產生。
 </p>
 
+<script src="./get-uid.config.js"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 
-// 這幾個值會被編進任何前端程式碼，本來就是公開的。
-// apiKey 的命名容易誤導——它是專案識別碼，不是密鑰。
-const app = initializeApp({
-  apiKey:     'REDACTED_FIREBASE_API_KEY',
-  authDomain: 'cindle-blog.firebaseapp.com',
-  projectId:  'cindle-blog',
-  appId:      '1:802326727219:web:d9458b2506a5c0da287146',
-});
+// 設定從 get-uid.config.js 讀，那個檔不進版控，由
+// infrastruct_as_code/scripts/04-local-env.sh 從 terraform output 產生。
+//
+// 這些值嚴格說不是機密——它們會被編進前端 bundle，訪客看原始碼就有。
+// 但「本來就會公開」不等於「應該寫進版控」，所以這裡不寫死。
+if (!window.FIREBASE_CONFIG) {
+  document.body.innerHTML =
+    '<h1>缺少設定</h1><p style="font-family:monospace">' +
+    '找不到 scripts/get-uid.config.js。<br><br>' +
+    '執行：<b>./infrastruct_as_code/scripts/04-local-env.sh</b></p>';
+  throw new Error('missing get-uid.config.js');
+}
+const app = initializeApp(window.FIREBASE_CONFIG);
 
 const auth = getAuth(app);
 const $ = (id) => document.getElementById(id);

@@ -110,10 +110,52 @@ VITE_API_BASE=http://localhost:8080
 EOF
 ok "$REPO_ROOT/web/admin/.env.local"
 
+step "產生 http_tests/http-client.private.env.json"
+# 保留既有的 token——那些是手動從 get-uid.html 貼進來的，
+# 每次重跑腳本都清掉的話會很煩。這裡只更新從 Terraform 來的值。
+python3 - "$REPO_ROOT" "$FB_API_KEY" <<'PYEOF'
+import json, os, pathlib, sys
+
+root, api_key = sys.argv[1], sys.argv[2]
+path = pathlib.Path(root) / "http_tests" / "http-client.private.env.json"
+
+data = {}
+if path.exists():
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        pass  # 檔案壞掉就重建，不要讓腳本死在這裡
+
+dev = data.setdefault("dev", {})
+dev["_comment"] = ("由 infrastruct_as_code/scripts/04-local-env.sh 產生。"
+                   "firebaseApiKey 會被覆寫；idToken / refreshToken 請自己從 "
+                   "scripts/get-uid.html 貼進來，重跑腳本不會清掉。")
+dev["firebaseApiKey"] = api_key
+for k in ("idToken", "refreshToken", "otherUserIdToken"):
+    dev.setdefault(k, "")
+
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+print(f"  已寫入 {path}")
+PYEOF
+ok "http_tests/http-client.private.env.json"
+
+step "產生 scripts/get-uid.config.js"
+cat > "$REPO_ROOT/scripts/get-uid.config.js" <<EOF
+// 由 infrastruct_as_code/scripts/04-local-env.sh 產生，不進版控。
+window.FIREBASE_CONFIG = {
+  apiKey:     "${FB_API_KEY}",
+  authDomain: "${FB_AUTH_DOMAIN}",
+  projectId:  "${PROJECT_ID}",
+  appId:      "${FB_APP_ID}",
+};
+EOF
+ok "scripts/get-uid.config.js"
+
 step "確認沒有進版控"
 cd "$REPO_ROOT"
 tracked=0
-for f in .env web/admin/.env.local; do
+for f in .env web/admin/.env.local http_tests/http-client.private.env.json scripts/get-uid.config.js; do
   if git check-ignore -q "$f" 2>/dev/null; then
     ok "$f 已被 .gitignore 排除"
   else

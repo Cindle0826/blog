@@ -14,6 +14,9 @@ service-account*.json
 # GoLand HTTP Client 的私有變數（放 ID token）
 http-client.private.env.json
 
+# get-uid.html 的 Firebase 設定，由 04-local-env.sh 產生
+scripts/get-uid.config.js
+
 # Firebase
 .firebase/
 .firebaserc

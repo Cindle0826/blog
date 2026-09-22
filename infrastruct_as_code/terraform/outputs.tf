@@ -23,9 +23,9 @@ output "uploads_bucket" {
   value       = google_storage_bucket.uploads.name
 }
 
-output "uploads_public_base_url" {
-  description = "Public URL prefix for uploaded objects, as stored in post markdown."
-  value       = "https://storage.googleapis.com/${google_storage_bucket.uploads.name}"
+output "uploads_path_prefix" {
+  description = "Path prefix under which uploaded images are served. Post markdown stores paths relative to the site, never the bucket's own URL — the bucket is private and its objects are not reachable from the internet."
+  value       = "/images/"
 }
 
 output "firestore_database" {

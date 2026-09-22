@@ -73,6 +73,7 @@
 | GET | `/robots.txt` | — | — | `s-maxage=86400` |
 | GET | `/feed.xml` | — | — | `s-maxage=3600` |
 | GET | `/search-index.json` | — | — | `s-maxage=3600` |
+| GET | `/images/{path...}` | — | — | `max-age=31536000, immutable` |
 | GET | `/preview/{id}` | `post` | `PostVM` | `no-store` + `noindex` |
 | — | 其他 | `error` | `ErrorVM` | `no-store` |
 
@@ -113,6 +114,7 @@
 - [ ] 4.2　ID token 驗證 middleware + UID 白名單　`cindle`
 - [ ] 4.3　`/api/*` 實作　`cindle`
 - [ ] 4.4　圖片上傳與縮圖　`cindle`
+- [ ] 4.4b　`GET /images/*` 從私有 GCS bucket 串流　`cindle`（規格見 API.md）
 - [ ] 4.5　React 後台骨架（Vite + TS）　`Claude`
 - [ ] 4.6　登入流程與 token 附加　`Claude`
 - [ ] 4.7　文章 CRUD 介面　`Claude`

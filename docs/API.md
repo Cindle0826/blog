@@ -188,20 +188,112 @@ Authorization: Bearer <firebase-id-token>
 1. 檢查 MIME（只收 `image/jpeg`、`image/png`、`image/webp`、`image/gif`）
 2. 檢查大小上限 10 MB
 3. **長邊超過 1600px 就縮圖**（用 `golang.org/x/image/draw`，純 Go 不用 cgo）
-4. 存到 Firebase Storage，路徑 `uploads/{yyyy}/{mm}/{uuid}.{ext}`
-5. 回傳網址與尺寸
+4. 存到 GCS，物件路徑 `{yyyy}/{mm}/{uuid}.{ext}`
+5. 回傳**站台上的路徑**與尺寸
 
 ```jsonc
 {
-  "url":    "https://storage.googleapis.com/…/uploads/2026/09/abc.webp",
+  "path":   "/images/2026/09/abc.webp",
   "width":  1600,
   "height": 900,
   "bytes":  184320
 }
 ```
 
+> ⚠️ 回傳的是 `path`，**不是 GCS 的絕對網址**。
+>
+> bucket 是私有的，物件從網際網路上根本拿不到。圖片一律經由
+> `GET /images/*` 提供（見下一節）。
+>
+> 這個決定的理由：
+> - **SEO** — Google 圖片是按託管網域歸屬的。用 `storage.googleapis.com`
+>   的話，圖片權重全部累積到 Google 的網域上，不是你的
+> - **成本** — GCS 對外流量逐 GB 計費；走 Firebase Hosting 則吃它的
+>   免費流量額度，而且 CDN 會擋掉絕大多數回源
+> - **可換性** — 網址會被寫進文章的 Markdown 裡。存 GCS 絕對網址等於把
+>   儲存供應商寫死在內容裡，之後想換就得改每一篇文章
+
 > 一定要回傳 `width`/`height`——前端要把它寫進 Markdown，
 > 這樣渲染出來的 `<img>` 才有尺寸，不會造成版面位移。
+
+Markdown 裡長這樣：
+
+```markdown
+![冷啟動分解圖](/images/2026/09/abc.webp)
+```
+
+---
+
+### `GET /images/{path...}`
+
+**這不是後台 API，是公開路由**，但跟上傳是同一個功能的兩半，所以寫在一起。
+
+把 GCS 的物件串流回去。不需要認證。
+
+| | |
+|---|---|
+| 物件位置 | `gs://{BLOG_UPLOADS_BUCKET}/{path}` |
+| 認證 | 無（公開） |
+| 快取 | `Cache-Control: public, max-age=31536000, immutable` |
+
+實作要點：
+
+1. **`path` 必須驗證。** 只允許 `[a-zA-Z0-9/._-]`，而且**拒絕任何含 `..` 的路徑**。
+   雖然 GCS 的物件名稱是扁平的（`..` 不會真的跳出目錄），但別依賴這點——
+   這種檢查是寫給未來那個把儲存換成本機檔案系統的人看的。
+
+2. **用 `io.Copy` 串流，不要先讀進記憶體。**
+   Cloud Run 只配 512Mi，幾個人同時抓大圖就爆了。
+
+3. **`immutable` 可以放心設。** 檔名帶 UUID，內容永遠不會變。
+   這讓 CDN 和瀏覽器都能永久快取，每張圖每個節點只回源一次。
+
+4. **轉發 `Content-Type` 與 `Content-Length`**，並處理
+   `If-None-Match` / `ETag` 回 304。
+
+5. **物件不存在要回 404，不要回 500。**
+
+大致的形狀（你的範圍，但這是我提議的改動，規格給完整）：
+
+```go
+func (h *Handler) Image(w http.ResponseWriter, r *http.Request) {
+    name := r.PathValue("path")
+    if !safeObjectPath(name) {
+        http.NotFound(w, r)
+        return
+    }
+
+    obj := h.bucket.Object(name)
+    attrs, err := obj.Attrs(r.Context())
+    if errors.Is(err, storage.ErrObjectNotExist) {
+        http.NotFound(w, r)
+        return
+    } else if err != nil {
+        h.serverError(w, r, err)
+        return
+    }
+
+    // 內容不會變，所以 ETag 比對命中就直接 304，連 GCS 都不用讀
+    if match := r.Header.Get("If-None-Match"); match != "" && match == attrs.Etag {
+        w.WriteHeader(http.StatusNotModified)
+        return
+    }
+
+    w.Header().Set("Content-Type", attrs.ContentType)
+    w.Header().Set("Content-Length", strconv.FormatInt(attrs.Size, 10))
+    w.Header().Set("ETag", attrs.Etag)
+    w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+
+    rc, err := obj.NewReader(r.Context())
+    if err != nil {
+        h.serverError(w, r, err)
+        return
+    }
+    defer rc.Close()
+
+    io.Copy(w, rc)   // 串流，不要 io.ReadAll
+}
+```
 
 ---
 

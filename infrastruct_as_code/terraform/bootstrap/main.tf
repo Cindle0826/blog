@@ -4,6 +4,12 @@ resource "google_storage_bucket" "tfstate" {
   location                    = var.region
   uniform_bucket_level_access = true
 
+  # Terraform state holds the full inventory of the project, and any resource
+  # attribute the provider records — this bucket must never become public by
+  # accident. "inherited" would have allowed it; "enforced" rejects the
+  # attempt at the bucket level.
+  public_access_prevention = "enforced"
+
   # Losing this bucket means losing the record of every managed resource.
   force_destroy = false
 

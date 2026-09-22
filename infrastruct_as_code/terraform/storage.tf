@@ -1,9 +1,32 @@
+// Private bucket holding post images.
+//
+// Nothing outside the project can reach it. Readers fetch images from
+// https://<site>/images/<path>, which Firebase Hosting's CDN serves and, on a
+// miss, Cloud Run fills by reading the object with the blog-server identity.
+//
+// Serving straight from storage.googleapis.com would have been simpler, but
+// it loses on both of this project's top priorities:
+//
+//   SEO   Google Images attributes a picture to the domain hosting it, so
+//         every image would build storage.googleapis.com's presence instead
+//         of the blog's.
+//   Cost  Cloud Storage bills internet egress per GB, while Firebase Hosting
+//         includes a monthly transfer allowance the CDN serves from.
+//
+// It also bakes the storage vendor into every published post: the object URL
+// ends up inside the markdown, so switching later means rewriting content.
+// Going through the site's own domain keeps that an implementation detail.
 resource "google_storage_bucket" "uploads" {
   project  = var.project_id
   name     = "${var.project_id}-uploads"
   location = var.region
 
   uniform_bucket_level_access = true
+
+  # Public access prevention is enforced at the bucket level, so a future
+  # `gsutil iam ch allUsers:objectViewer` is rejected outright rather than
+  # quietly making every image enumerable.
+  public_access_prevention = "enforced"
 
   # Images referenced by published posts must not vanish because of a
   # `terraform destroy`; emptying this bucket has to be a conscious act.
@@ -25,37 +48,13 @@ resource "google_storage_bucket" "uploads" {
     }
   }
 
-  # The admin UI uploads directly from the browser, so the bucket has to
-  # accept cross-origin requests from the site itself.
-  cors {
-    origin          = compact([var.site_base_url, "http://localhost:5173", "http://localhost:8080"])
-    method          = ["GET", "HEAD", "PUT", "POST"]
-    response_header = ["Content-Type", "Authorization", "Content-Length"]
-    max_age_seconds = 3600
-  }
+  # No CORS rules: the browser never talks to this bucket. Uploads go to
+  # POST /api/uploads on the Go server as multipart form data, and reads go
+  # through GET /images/*. Both are same-origin.
 
   depends_on = [google_project_service.apis]
 }
 
-# Post images are public by definition — they are embedded in pages meant to
-# be crawled and shared. So anonymous GET on a known object URL has to work.
-#
-# The role here is legacyObjectReader, NOT objectViewer, and the difference
-# matters: objectViewer includes storage.objects.list, which lets anyone
-# enumerate the whole bucket. That turns "you can fetch an image if you know
-# its URL" into "you can see every file that was ever uploaded" — including
-# images attached to unpublished drafts, and any file uploaded by mistake.
-#
-# legacyObjectReader grants storage.objects.get only. Objects stay publicly
-# fetchable by URL; the listing endpoint returns 403.
-#
-# Verify with:
-#   curl https://storage.googleapis.com/storage/v1/b/<bucket>/o   # want 403
-#
-# Still true regardless of the role: anything in this bucket is world-readable
-# the moment it lands. Do not put anything private here.
-resource "google_storage_bucket_iam_member" "uploads_public_read" {
-  bucket = google_storage_bucket.uploads.name
-  role   = "roles/storage.legacyObjectReader"
-  member = "allUsers"
-}
+# Nothing grants allUsers anything here. The only principal with access is the
+# Cloud Run runtime identity, via google_storage_bucket_iam_member.server_uploads
+# in iam.tf.

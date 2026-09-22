@@ -53,8 +53,11 @@ Firestore 用 **Native mode**（不是 Datastore mode）。
   "tagSlugs":    ["gcp", "go", "performance"],   // 只存 slug，顯示名稱去 tags 查
 
   // ── 封面圖 ────────────────────────────────────────
+  // url 存的是「站台上的路徑」，不是 GCS 的絕對網址。
+  // bucket 是私有的，圖片一律經由 GET /images/* 提供。
+  // 存絕對網址等於把儲存供應商寫死進內容，之後想換就要改每一篇文章。
   "cover": {
-    "url":    "https://storage.googleapis.com/…/cover.webp",
+    "url":    "/images/2026/09/cover.webp",
     "alt":    "冷啟動時間分解圖",
     "width":  1600,
     "height": 900
@@ -78,6 +81,8 @@ Firestore 用 **Native mode**（不是 Datastore mode）。
 | `updatedAt` | 每次存檔都更新，但**只有在已發布後才顯示給讀者** |
 | `html` | 必須是清洗過的。這是 XSS 的唯一防線 |
 | `cover.width/height` | 必填。少了它瀏覽器無法預留空間，會造成版面位移（扣 CLS 分數） |
+| `cover.url` | 以 `/images/` 開頭的站台路徑，**不可**是 `storage.googleapis.com` 的網址 |
+| `markdown` 裡的圖片 | 同上，一律 `![alt](/images/...)` |
 
 ### slug 規則
 
@@ -130,16 +135,23 @@ document ID 直接用 slug，方便直接 `Get`。
 
 ## 索引
 
-Firestore 單欄位索引是自動的，但複合查詢要手動建。需要的有：
+Firestore 單欄位索引是自動的，複合查詢要另外建。
+**四個都已經建好了**，由 Terraform 管理，見
+[`infrastruct_as_code/terraform/firestore.tf`](../infrastruct_as_code/terraform/firestore.tf)。
 
-| 查詢 | 索引 |
-|---|---|
-| 首頁 / 文章列表 | `status ASC, kind ASC, publishedAt DESC` |
-| 標籤頁 | `status ASC, tagSlugs ARRAY, publishedAt DESC` |
-| 置頂優先 | `status ASC, kind ASC, pinned DESC, publishedAt DESC` |
+| 資源 | 欄位 | 服務的查詢 |
+|---|---|---|
+| `posts_by_kind` | `status, kind, publishedAt DESC` | 首頁、`/posts`、`/notes` |
+| `posts_pinned` | `status, kind, pinned DESC, publishedAt DESC` | 置頂優先的列表 |
+| `posts_by_tag` | `status, tagSlugs CONTAINS, publishedAt DESC` | 標籤頁 |
+| `posts_admin` | `status, updatedAt DESC` | 後台列表 |
 
-建索引的指令會在第一次跑到該查詢時，由 Firestore 的錯誤訊息直接給你
-（錯誤訊息裡有一個可以點的網址）。建好之後匯出成 `deploy/firestore.indexes.json` 進版控。
+沒有索引的話，查詢會在**執行期**才失敗，錯誤訊息裡附一個可以點的 Console 連結。
+開發時很方便，上線就是事故——所以先建好。
+
+> 建索引很慢。這四個當初花了 **7 分鐘**。如果你之後加了新的查詢組合，
+> 記得寫進 `firestore.tf` 再 apply，不要在 Console 點一點就算了——
+> Console 建的索引不在 state 裡，下次 apply 不會知道它存在。
 
 ---
 

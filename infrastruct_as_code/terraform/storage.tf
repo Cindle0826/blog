@@ -38,14 +38,24 @@ resource "google_storage_bucket" "uploads" {
 }
 
 # Post images are public by definition — they are embedded in pages meant to
-# be crawled and shared. This grants read-only access to the objects; it does
-# NOT allow listing the bucket or writing to it.
+# be crawled and shared. So anonymous GET on a known object URL has to work.
 #
-# The consequence to be aware of: anything uploaded here is world-readable
-# the moment it lands, including a draft's images before the post is
-# published. Do not put anything private in this bucket.
+# The role here is legacyObjectReader, NOT objectViewer, and the difference
+# matters: objectViewer includes storage.objects.list, which lets anyone
+# enumerate the whole bucket. That turns "you can fetch an image if you know
+# its URL" into "you can see every file that was ever uploaded" — including
+# images attached to unpublished drafts, and any file uploaded by mistake.
+#
+# legacyObjectReader grants storage.objects.get only. Objects stay publicly
+# fetchable by URL; the listing endpoint returns 403.
+#
+# Verify with:
+#   curl https://storage.googleapis.com/storage/v1/b/<bucket>/o   # want 403
+#
+# Still true regardless of the role: anything in this bucket is world-readable
+# the moment it lands. Do not put anything private here.
 resource "google_storage_bucket_iam_member" "uploads_public_read" {
   bucket = google_storage_bucket.uploads.name
-  role   = "roles/storage.objectViewer"
+  role   = "roles/storage.legacyObjectReader"
   member = "allUsers"
 }

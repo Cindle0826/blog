@@ -48,9 +48,22 @@ Terraform 要能管專案，專案得先接計費、先啟用 `cloudresourcemana
 **Firestore 開了 delete protection。**
 擋住手滑的 `terraform destroy`。真要刪必須先改成 `ABANDON`、apply、再 destroy。
 
-**上傳 bucket 是公開讀取的。**
-文章圖片本來就是要被爬、被分享的。但要知道副作用：**東西一上傳就是全世界可讀**，
-包含草稿還沒發布時的圖片。不要把任何私密的東西放進這個 bucket。
+**上傳 bucket 是公開讀取的，但不可列舉。**
+文章圖片本來就是要被爬、被分享的，所以匿名 GET 必須能拿到。
+
+角色用的是 `roles/storage.legacyObjectReader` 而不是 `objectViewer`——
+這個差別很重要：`objectViewer` 包含 `storage.objects.list`，等於任何人都能
+**列出整個 bucket 的所有檔名**，包含還沒發布的草稿圖片、以及誤傳的檔案。
+`legacyObjectReader` 只給 `storage.objects.get`，知道網址才拿得到。
+
+驗證方式：
+
+```bash
+# 想要 403/401
+curl https://storage.googleapis.com/storage/v1/b/cindle-blog-uploads/o
+```
+
+不管用哪個角色，**東西一上傳就是全世界可讀**。不要把私密的東西放進這個 bucket。
 
 **不用 service account 金鑰檔。**
 本機用 ADC，Cloud Run 用附掛的 service account。金鑰檔會躺在硬碟上、會不小心進 git、

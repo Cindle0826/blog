@@ -10,10 +10,7 @@ cd infrastruct_as_code
 
 ./scripts/00-prereqs.sh        # 接計費帳戶 + 開兩個 Terraform 自己需要的 API
 ./scripts/01-state-bucket.sh   # 建 GCS state bucket
-cp terraform/terraform.tfvars.example terraform/terraform.tfvars
-$EDITOR terraform/terraform.tfvars
-
-./scripts/02-apply.sh          # 只看 plan
+./scripts/02-apply.sh          # 只看 plan（terraform.tfvars 不存在會自動產生）
 ./scripts/02-apply.sh --apply  # 確認後實際建立
 
 ./scripts/03-local-dev-auth.sh # 本機開發憑證

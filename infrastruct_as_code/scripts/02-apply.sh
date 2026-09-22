@@ -23,13 +23,31 @@ step "檢查環境"
 check_account
 
 step "檢查 terraform.tfvars"
-if [[ ! -f "$TF_DIR/terraform.tfvars" ]]; then
-  warn "找不到 $TF_DIR/terraform.tfvars"
-  printf '  先複製範本再填值：\n\n'
-  printf '    cp %s/terraform.tfvars.example %s/terraform.tfvars\n\n' "$TF_DIR" "$TF_DIR"
-  die "terraform.tfvars 不存在"
+# 第一次跑就自動產生，不要叫使用者手動 cp 再編輯：
+# billing_account 的值 _common.sh 裡已經有了，site_base_url 第一次本來就該留空。
+# 手動步驟只會製造「在哪個目錄執行」「填錯欄位」這類沒必要的失敗。
+if [[ -f "$TF_DIR/terraform.tfvars" ]]; then
+  ok "terraform.tfvars 存在（已 gitignore，不會進版控）"
+else
+  warn "找不到 terraform.tfvars，依 scripts/_common.sh 的設定自動產生"
+  cat > "$TF_DIR/terraform.tfvars" <<TFVARS
+# 由 scripts/02-apply.sh 自動產生。
+# 可以直接改，這支腳本之後不會再覆蓋它。
+
+billing_account = "${BILLING_ACCOUNT}"
+
+# 站台的公開網址，不要結尾斜線。
+#
+# 第一次 apply 時 Cloud Run 的網址還不存在，所以留空。apply 完之後
+# 把輸出的 cloud_run_url 填進來再 apply 一次；自訂網域上線後改成
+# https://cindle.dev。
+#
+# 這個值會變成 view.Site.BaseURL——所有 canonical URL、og:image、
+# sitemap 都從它組出來。填錯的話網站看起來正常，但 SEO 會整個歪掉。
+site_base_url = ""
+TFVARS
+  ok "已產生 ${TF_DIR}/terraform.tfvars"
 fi
-ok "terraform.tfvars 存在（已 gitignore，不會進版控）"
 
 cd "$TF_DIR"
 

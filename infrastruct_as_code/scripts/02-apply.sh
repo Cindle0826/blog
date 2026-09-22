@@ -56,7 +56,7 @@ if [[ "$DO_APPLY" -eq 0 ]]; then
   exit 0
 fi
 
-confirm "即將把上面的變更套用到 $PROJECT_ID。"
+confirm "即將把上面的變更套用到 ${PROJECT_ID}。"
 
 step "terraform apply"
 terraform apply -input=false tfplan

@@ -3,6 +3,14 @@
 
 set -euo pipefail
 
+# ⚠️ 變數後面接中文時一定要寫成 ${VAR}，不能寫 $VAR。
+#
+# macOS 內建的是 bash 3.2，它判斷變數名結尾時會把非 ASCII 的高位元組
+# 當成識別字的一部分。所以 "$PROJECT_ID（原本是…）" 會被解讀成要展開
+# 一個叫 PROJECT_ID（ 的變數，配上 set -u 就是 unbound variable，腳本直接死掉。
+#
+# 全形括號、頓號、句號都會觸發。加大括號就沒事。
+
 PROJECT_ID="${PROJECT_ID:-cindle-blog}"
 REGION="${REGION:-asia-east1}"
 BILLING_ACCOUNT="${BILLING_ACCOUNT:-REDACTED_BILLING_ACCOUNT}"

@@ -20,7 +20,7 @@ step "檢查專案是否存在"
 if gcloud projects describe "$PROJECT_ID" --format='value(projectId)' >/dev/null 2>&1; then
   ok "專案 $PROJECT_ID 存在"
 else
-  die "找不到專案 $PROJECT_ID。先建立：gcloud projects create $PROJECT_ID --name=\"Cindle Blog\""
+  die "找不到專案 ${PROJECT_ID}。先建立：gcloud projects create $PROJECT_ID --name=\"Cindle Blog\""
 fi
 
 step "接上計費帳戶"
@@ -30,7 +30,7 @@ billing_enabled="$(gcloud billing projects describe "$PROJECT_ID" \
 if [[ "$billing_enabled" == "True" ]]; then
   skip "計費帳戶已接上"
 else
-  confirm "即將把專案 $PROJECT_ID 接上計費帳戶 $BILLING_ACCOUNT。
+  confirm "即將把專案 $PROJECT_ID 接上計費帳戶 ${BILLING_ACCOUNT}。
 這會讓這個專案開始可以產生費用。本專案設計上會落在免費額度內，
 而且下一步的 Terraform 會建立 NT\$1 的預算警示，但風險還是你在承擔。"
 
@@ -59,7 +59,7 @@ if [[ "$current" == "$PROJECT_ID" ]]; then
   skip "已經是 $PROJECT_ID"
 else
   gcloud config set project "$PROJECT_ID" >/dev/null
-  ok "預設專案改為 $PROJECT_ID（原本是 $current）"
+  ok "預設專案改為 ${PROJECT_ID}（原本是 ${current}）"
 fi
 
 printf '\n%s前置作業完成。%s\n' "$c_green$c_bold" "$c_reset"

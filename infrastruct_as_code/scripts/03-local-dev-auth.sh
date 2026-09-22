@@ -21,7 +21,7 @@ adc_file="$HOME/.config/gcloud/application_default_credentials.json"
 
 step "Application Default Credentials"
 if [[ -f "$adc_file" ]]; then
-  skip "ADC 已存在（$adc_file）"
+  skip "ADC 已存在（${adc_file}）"
   warn "如果之後出現 403 或 quota project 相關錯誤，重跑一次："
   printf '    gcloud auth application-default login\n'
 else

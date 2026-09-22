@@ -13,7 +13,8 @@ cd infrastruct_as_code
 ./scripts/02-apply.sh          # 只看 plan（terraform.tfvars 不存在會自動產生）
 ./scripts/02-apply.sh --apply  # 確認後實際建立
 
-./scripts/03-local-dev-auth.sh # 本機開發憑證
+./scripts/03-local-dev-auth.sh # 本機開發憑證（ADC）
+./scripts/04-local-env.sh      # 從 terraform output 產生 .env
 ./scripts/verify.sh            # 唯讀檢查，隨時可跑
 ```
 

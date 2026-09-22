@@ -68,3 +68,8 @@ output "firebase_config_json" {
     appId      = google_firebase_web_app.admin.app_id
   })
 }
+
+output "admin_uids" {
+  description = "Firebase Auth UIDs allowed to use the admin API. Echoed back so scripts/04-local-env.sh can keep the local .env in sync without anyone re-typing it."
+  value       = var.admin_uids
+}

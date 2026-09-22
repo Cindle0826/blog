@@ -114,7 +114,7 @@ step "產生 http_tests/http-client.private.env.json"
 # 保留既有的 token——那些是手動從 get-uid.html 貼進來的，
 # 每次重跑腳本都清掉的話會很煩。這裡只更新從 Terraform 來的值。
 python3 - "$REPO_ROOT" "$FB_API_KEY" <<'PYEOF'
-import json, os, pathlib, sys
+import json, pathlib, sys
 
 root, api_key = sys.argv[1], sys.argv[2]
 path = pathlib.Path(root) / "http_tests" / "http-client.private.env.json"
@@ -126,17 +126,21 @@ if path.exists():
     except json.JSONDecodeError:
         pass  # 檔案壞掉就重建，不要讓腳本死在這裡
 
-dev = data.setdefault("dev", {})
-dev["_comment"] = ("由 infrastruct_as_code/scripts/04-local-env.sh 產生。"
-                   "firebaseApiKey 會被覆寫；idToken / refreshToken 請自己從 "
-                   "scripts/get-uid.html 貼進來，重跑腳本不會清掉。")
-dev["firebaseApiKey"] = api_key
-for k in ("idToken", "refreshToken", "otherUserIdToken"):
-    dev.setdefault(k, "")
+# 環境名稱要跟 http-client.env.json 對得上，GoLand 才會把兩邊合併。
+# emulator 的 key 是 "any"——模擬器不驗 API key。
+for env, key in (("local", api_key), ("cloudrun", api_key), ("emulator", "any")):
+    e = data.setdefault(env, {})
+    e["firebaseApiKey"] = key
+    for k in ("idToken", "refreshToken", "otherUserIdToken"):
+        e.setdefault(k, "")
+
+data["local"]["_comment"] = ("由 infrastruct_as_code/scripts/04-local-env.sh 產生。"
+                             "firebaseApiKey 每次重跑都會更新；idToken / refreshToken "
+                             "請自己從 scripts/get-uid.html 貼進來，不會被清掉。")
 
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-print(f"  已寫入 {path}")
+print(f"  已寫入 {path}（local / cloudrun / emulator 三個環境）")
 PYEOF
 ok "http_tests/http-client.private.env.json"
 

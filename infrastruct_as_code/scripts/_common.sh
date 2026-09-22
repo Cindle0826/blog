@@ -13,7 +13,25 @@ set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-cindle-blog}"
 REGION="${REGION:-asia-east1}"
-BILLING_ACCOUNT="${BILLING_ACCOUNT:-REDACTED_BILLING_ACCOUNT}"
+
+# 計費帳戶 ID 不寫死。它不是憑證——光知道 ID 動不了任何東西，要有帳戶上的
+# IAM 權限才行——但它是個帳戶識別碼，沒必要出現在一個會公開的 repo 裡。
+#
+# 解析順序：環境變數 → 專案已接的帳戶 → 帳戶清單裡第一個 open 的。
+# 第二種在 00-prereqs.sh 首次執行時還不存在（還沒接），所以需要第三種。
+resolve_billing_account() {
+  [[ -n "${BILLING_ACCOUNT:-}" ]] && { printf '%s' "$BILLING_ACCOUNT"; return; }
+
+  local acct
+  acct="$(gcloud billing projects describe "$PROJECT_ID" \
+    --format='value(billingAccountName)' 2>/dev/null | sed 's|billingAccounts/||')"
+  [[ -n "$acct" ]] && { printf '%s' "$acct"; return; }
+
+  gcloud billing accounts list --filter='open=true' \
+    --format='value(name)' --limit=1 2>/dev/null | sed 's|billingAccounts/||'
+}
+
+BILLING_ACCOUNT="$(resolve_billing_account)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TF_DIR="$(cd "$SCRIPT_DIR/../terraform" && pwd)"

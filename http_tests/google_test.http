@@ -1,6 +1,24 @@
 ### Firebase Auth / Google 身分相關的手動測試
 #
 # 用 GoLand 內建的 HTTP Client 跑（點每個請求左邊的 ▶）。
+#
+# ── 怎麼指定要用哪組環境 ─────────────────────────────────
+#
+# 環境不是寫在這個檔裡的，是在 GoLand 的介面上選：
+#
+#   編輯器右上角有一個下拉選單（預設顯示 <no environment>）
+#   點開來選，或按 ▶ 時選「Run with: <環境名>」
+#
+# 目前有三組，定義在 http-client.env.json：
+#
+#   local      打本機的 go run ./cmd/server（localhost:8080）
+#   cloudrun   打線上的 Cloud Run
+#   emulator   打本機的 Firebase Auth 模擬器（localhost:9099）
+#
+# 同名的環境在 http-client.private.env.json 裡也有一份，GoLand 會把兩邊
+# 合併：公開值進版控，API key 與 token 留在私有檔。所以兩個檔案的環境
+# 名稱必須一致，少一邊就會讀不到變數。
+#
 # 變數分兩個檔：
 #   http-client.env.json          結構性的值（專案 ID、API 位置），進版控
 #   http-client.private.env.json  API key 與 token，不進版控

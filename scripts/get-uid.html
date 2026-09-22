@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<!--
+  取得真實 Firebase UID 的工具頁。
+
+  為什麼需要一個頁面而不是純 API 呼叫：OAuth2 的使用者同意步驟必須在
+  瀏覽器裡發生，那是協定的設計核心——Google 要讓「使用者本人」在自己的
+  瀏覽器裡確認授權，而不是讓某個程式代替他同意。這一步無法用 API 工具
+  取代。
+
+  這個頁面把瀏覽器的部分壓到最小：登入一次，把 UID 和 ID token 印出來，
+  其餘的驗證你可以拿著 token 回 Postman 做。
+
+  用法：
+      cd ~/go-projects/blog && python3 -m http.server 8000
+      開 http://localhost:8000/scripts/get-uid.html
+
+  必須用 http://localhost 開，不能用 file://——Firebase 的授權網域清單
+  裡是 localhost，而 file:// 的 origin 是 null，會被擋下。
+
+  裡面的設定值不是機密，見 docs/LOCAL-AUTH.md。
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>取得 Firebase UID</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    max-width: 44rem; margin: 3rem auto; padding: 0 1.5rem;
+    line-height: 1.7; background: #f4efe6; color: #2a2a2d;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #1a1a1e; color: #e7e3db; } }
+  h1 { font-size: 1.4rem; margin-bottom: .3rem; }
+  .sub { color: #8a8378; font-size: .85rem; margin-bottom: 2rem; }
+  button {
+    font: inherit; padding: .6rem 1.2rem; cursor: pointer;
+    border: 1px solid #b0562f; border-radius: 8px;
+    background: #b0562f; color: #fff;
+  }
+  button:hover { background: #96441f; }
+  button.ghost { background: transparent; color: inherit; border-color: #8a8378; }
+  .row { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .field { margin-bottom: 1.2rem; }
+  .label { font-size: .78rem; color: #8a8378; margin-bottom: .3rem; }
+  .value {
+    padding: .7rem .9rem; border: 1px solid #cec4b1; border-radius: 8px;
+    background: rgba(128,128,128,.08); word-break: break-all; font-size: .85rem;
+  }
+  .uid { font-size: 1.1rem; font-weight: 700; color: #b0562f; }
+  .err { color: #c0392b; white-space: pre-wrap; }
+  .hint { font-size: .78rem; color: #8a8378; margin-top: 2rem; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<h1>取得 Firebase UID</h1>
+<p class="sub">用真的 Google 帳號登入 cindle-blog，拿到要填進 <code>admin_uids</code> 的 UID。</p>
+
+<div class="row">
+  <button id="signin">使用 Google 登入</button>
+  <button id="signout" class="ghost" hidden>登出</button>
+</div>
+
+<div id="error" class="field" hidden>
+  <div class="label">錯誤</div>
+  <div class="value err" id="error-text"></div>
+</div>
+
+<div id="result" hidden>
+  <div class="field">
+    <div class="label">使用者 UID ← 這個填進 terraform.tfvars 的 admin_uids</div>
+    <div class="value uid" id="uid"></div>
+  </div>
+  <div class="field">
+    <div class="label">Email</div>
+    <div class="value" id="email"></div>
+  </div>
+  <div class="field">
+    <div class="label">識別資訊提供者</div>
+    <div class="value" id="provider"></div>
+  </div>
+  <div class="field">
+    <div class="label">ID token（有效一小時，可以拿去 Postman 打 /api/*）</div>
+    <div class="value" id="token"></div>
+  </div>
+  <div class="row">
+    <button id="copy-uid" class="ghost">複製 UID</button>
+    <button id="copy-token" class="ghost">複製 ID token</button>
+  </div>
+</div>
+
+<p class="hint">
+  登入後在 Postman 帶上 <code>Authorization: Bearer &lt;ID token&gt;</code> 就能測 <code>/api/*</code>。<br>
+  這裡的設定值不是機密，說明見 <code>docs/LOCAL-AUTH.md</code>。
+</p>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+
+// 這幾個值會被編進任何前端程式碼，本來就是公開的。
+// apiKey 的命名容易誤導——它是專案識別碼，不是密鑰。
+const app = initializeApp({
+  apiKey:     'REDACTED_FIREBASE_API_KEY',
+  authDomain: 'cindle-blog.firebaseapp.com',
+  projectId:  'cindle-blog',
+  appId:      '1:802326727219:web:d9458b2506a5c0da287146',
+});
+
+const auth = getAuth(app);
+const $ = (id) => document.getElementById(id);
+
+function fail(e) {
+  $('error').hidden = false;
+  $('error-text').textContent = `${e.code || 'error'}\n${e.message || e}`;
+}
+
+$('signin').addEventListener('click', async () => {
+  $('error').hidden = true;
+  try {
+    const provider = new GoogleAuthProvider();
+    // 每次都問要用哪個帳號，避免 Google 自動沿用上次那個而選錯
+    provider.setCustomParameters({ prompt: 'select_account' });
+    await signInWithPopup(auth, provider);
+  } catch (e) {
+    fail(e);
+  }
+});
+
+$('signout').addEventListener('click', () => signOut(auth));
+
+onAuthStateChanged(auth, async (user) => {
+  $('result').hidden = !user;
+  $('signout').hidden = !user;
+  $('signin').hidden = !!user;
+  if (!user) return;
+
+  $('uid').textContent = user.uid;
+  $('email').textContent = user.email || '-';
+  $('provider').textContent = user.providerData.map((p) => p.providerId).join(', ');
+  $('token').textContent = await user.getIdToken();
+});
+
+const copy = (btn, src) => $(btn).addEventListener('click', async () => {
+  await navigator.clipboard.writeText($(src).textContent);
+  const b = $(btn), old = b.textContent;
+  b.textContent = '已複製';
+  setTimeout(() => { b.textContent = old; }, 1200);
+});
+copy('copy-uid', 'uid');
+copy('copy-token', 'token');
+</script>
+</body>
+</html>

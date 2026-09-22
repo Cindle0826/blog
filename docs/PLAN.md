@@ -43,7 +43,7 @@
       Cloud Run：`https://blog-3e5cnz7acq-de.a.run.app`（目前是佔位 image）
 - [ ] 0.6　`./scripts/03-local-dev-auth.sh` — 本機 ADC
 - [x] 0.7　Console 開啟 Firebase Auth 的 Google 登入
-- [ ] 0.7b　設定 `admin_uids` — 等 Phase 4.6 用 Google 登入後取得
+- [x] 0.7b　設定 `admin_uids`（`KyYz0RfQ...xV32`，provider `google.com`）
 - [ ] 0.8　`npm i -g firebase-tools` 然後 `firebase login`
 - [ ] 0.9　註冊 `cindle.dev` 並指向 Firebase Hosting
 - [x] 0.10　建立 repo、`go mod init`、`.gitignore`
@@ -119,23 +119,34 @@
 - [ ] 4.5　React 後台骨架（Vite + TS）　`Claude`
 - [ ] 4.6　登入流程與 token 附加　`Claude`
 
-### 管理帳號的取得方式
+### 管理帳號（已完成）
 
-一開始是在 Firebase Console 手動建一個 password 帳號來拿 UID。Console
-在建立使用者時順手啟用了 Email/Password 登入方式（沒有詢問），等於替後台
-多開一條密碼登入路徑，而那個帳號就是 admin。
+| | |
+|---|---|
+| UID | `KyYz0RfQ6fMXtmC2y2vLaC81xV32` |
+| email | `cindle0826@gmail.com` |
+| provider | `google.com` |
 
-改成更乾淨的做法：**刪掉那個帳號、停用 Email/Password，UID 等 Google
-登入之後再拿。** 這樣拿到的是純 `google.com` provider 的帳號，也不必賭
-Firebase 的跨 provider 帳號合併行為會不會保留 UID。
+取得過程留下一個有用的實測結果：這個帳號最早是在 Console 以
+**password** 方式建立的（當時為了提早拿到 UID）。第一次用 Google 登入時，
+Firebase **把 provider 直接換成 `google.com` 並保留原本的 UID**——Google
+提供的是已驗證的 email，會取代未驗證的密碼憑證。那組密碼現在已經不存在。
 
-- [x] 刪除手動建立的 password 帳號
-- [x] 停用 Email/Password 登入方式
-- [x] `admin_uids` 清空，Cloud Run 與本機 `.env` 已同步
-- [ ] Phase 4.6 登入後取得真正的 UID，填回 `terraform.tfvars`
+所以原本擔心的「UID 會不會變」不會發生，也不需要先刪帳號再重建。
 
-在那之前 `ADMIN_UIDS` 是空的。這不擋任何事——`/api/*` 要等 4.3 才存在。
-需要測 API 時用 Firebase Auth 模擬器，做法見 [`LOCAL-AUTH.md`](LOCAL-AUTH.md)。
+- [x] UID 已填入 `terraform.tfvars`、Cloud Run、本機 `.env`（三處已驗證一致）
+- [ ] **停用 Email/Password 登入方式**（見下）
+
+#### 為什麼還是要停用 Email/Password
+
+已經沒有任何帳號帶著密碼憑證，所以沒有人能用密碼登入。但只要這個登入方式
+是啟用的，**任何人都能拿公開的 `apiKey` 呼叫 `accounts:signUp` 自行註冊**。
+
+註冊出來的帳號不在 `admin_uids` 裡，動不了 `/api/*`，所以不是權限漏洞。
+但它讓陌生人可以在你的專案裡累積帳號——是噪音，也是被濫用的入口。
+
+停用位置：Firebase Console → Authentication → 登入方式 → Email/Password。
+停用之後現有帳號與 UID 都不受影響（它的 provider 是 `google.com`）。
 - [ ] 4.7　文章 CRUD 介面　`Claude`
 - [ ] 4.8　CodeMirror 6 分割即時預覽　`Claude`
 - [ ] 4.9　自動存草稿、圖片拖放　`Claude`

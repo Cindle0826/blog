@@ -28,8 +28,13 @@ confirm() {
   [[ "${ASSUME_YES:-}" == "1" ]] && return 0
   local reply
   printf '\n%s%s%s\n' "$c_bold" "$*" "$c_reset"
-  read -r -p "繼續？[y/N] " reply
-  [[ "$reply" =~ ^[Yy]$ ]] || die "已取消"
+  # 明講「按 Enter 等於取消」。危險動作預設 No 是對的，但不講清楚的話，
+  # 取消之後腳本就直接結束，看起來跟「正常跑完」幾乎一樣——
+  # 使用者會以為做完了，然後在下一支腳本撞到莫名其妙的錯誤。
+  read -r -p "繼續？輸入 y 執行；直接按 Enter 取消 [y/N] " reply
+  if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+    die "已取消。沒有做任何變更，這支腳本後面的步驟也都沒有執行。"
+  fi
 }
 
 need() { command -v "$1" >/dev/null 2>&1 || die "找不到指令：$1"; }

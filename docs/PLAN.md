@@ -170,6 +170,10 @@ Firebase **把 provider 直接換成 `google.com` 並保留原本的 UID**——
 - [ ] 6.2　部署 Cloud Run（`min-instances=0`、256Mi）
 - [ ] 6.3　`firebase.json` rewrite 設定
 - [ ] 6.4　自訂網域 + SSL
+- [ ] 6.4b　把 `cindle.dev` 加進 Firebase 的**授權網域**
+      （Authentication → 設定 → 授權網域）。漏了的話正式站的登入會被擋。
+      這跟 OAuth 用戶端的 redirect URI 是兩回事——後者永遠是
+      `cindle-blog.firebaseapp.com/__/auth/handler`，不需要也不應該去改。
 - [ ] 6.5　驗證 CDN 真的有命中
 - [ ] 6.6　Search Console 驗證與提交 sitemap
 - [ ] 6.7　一週後確認帳單為 $0

@@ -42,7 +42,8 @@
 - [x] 0.5　`./scripts/02-apply.sh --apply` — 25 個資源建立完成（2026-09-22）
       Cloud Run：`https://blog-3e5cnz7acq-de.a.run.app`（目前是佔位 image）
 - [ ] 0.6　`./scripts/03-local-dev-auth.sh` — 本機 ADC
-- [ ] 0.7　Console 手動開 Firebase Auth 的 Google 登入（無 Terraform 資源）
+- [x] 0.7　Console 開啟 Firebase Auth 的 Google 登入
+- [x] 0.7b　建立管理帳號並設定 `admin_uids`（UID `KyYz0RfQ...xV32`）
 - [ ] 0.8　`npm i -g firebase-tools` 然後 `firebase login`
 - [ ] 0.9　註冊 `cindle.dev` 並指向 Firebase Hosting
 - [x] 0.10　建立 repo、`go mod init`、`.gitignore`
@@ -117,6 +118,11 @@
 - [ ] 4.4b　`GET /images/*` 從私有 GCS bucket 串流　`cindle`（規格見 API.md）
 - [ ] 4.5　React 後台骨架（Vite + TS）　`Claude`
 - [ ] 4.6　登入流程與 token 附加　`Claude`
+      ⚠️ 第一次用 Google 登入之後，回 Firebase Console 確認 UID 沒有改變。
+      目前那個帳號是在 Console 手動建的，provider 是 `password`；Google 登入
+      時 Firebase 會把兩者併成同一個帳號（專案設定為「一個 email 一個帳號」），
+      UID 應該保留——但沒驗證過就不算數。變了就更新 `terraform.tfvars`
+      的 `admin_uids` 重新 apply。
 - [ ] 4.7　文章 CRUD 介面　`Claude`
 - [ ] 4.8　CodeMirror 6 分割即時預覽　`Claude`
 - [ ] 4.9　自動存草稿、圖片拖放　`Claude`

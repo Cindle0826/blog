@@ -118,11 +118,27 @@
 - [ ] 4.4b　`GET /images/*` 從私有 GCS bucket 串流　`cindle`（規格見 API.md）
 - [ ] 4.5　React 後台骨架（Vite + TS）　`Claude`
 - [ ] 4.6　登入流程與 token 附加　`Claude`
-      ⚠️ 第一次用 Google 登入之後，回 Firebase Console 確認 UID 沒有改變。
-      目前那個帳號是在 Console 手動建的，provider 是 `password`；Google 登入
-      時 Firebase 會把兩者併成同一個帳號（專案設定為「一個 email 一個帳號」），
-      UID 應該保留——但沒驗證過就不算數。變了就更新 `terraform.tfvars`
-      的 `admin_uids` 重新 apply。
+
+### ⚠️ 4.6 完成後要處理的帳號收尾（順序不能顛倒）
+
+管理帳號是在 Firebase Console 手動建的，目前**唯一的 provider 是 `password`**。
+Console 在建立使用者時順手啟用了 Email/Password 登入方式（沒有詢問），
+所以現在後台有兩條登入路徑，而那不是我們要的。
+
+收尾順序：
+
+1. 用 Google 登入一次（需要 4.6 的登入頁）
+2. 回 Console 確認兩件事：
+   - 識別資訊提供者變成 `password, google.com`（兩個都在）
+   - 使用者 UID 仍是 `KyYz0RfQ6fMXtmC2y2vLaC81xV32`
+3. UID 變了 → 更新 `terraform.tfvars` 的 `admin_uids`，apply，重跑 `04-local-env.sh`
+4. **確認完才停用** Email/Password 登入方式
+
+> 不能先停用再登入。那個帳號現在只有 `password` 一個 provider，先停用會讓它
+> 暫時沒有任何可用的登入方式——UID 還在，但要賭 Firebase 的帳號合併行為。
+> 先併再停，全程都有一條路可走。
+>
+> 停用的是「登入方式」，不是「使用者」。帳號與 UID 都會保留。
 - [ ] 4.7　文章 CRUD 介面　`Claude`
 - [ ] 4.8　CodeMirror 6 分割即時預覽　`Claude`
 - [ ] 4.9　自動存草稿、圖片拖放　`Claude`

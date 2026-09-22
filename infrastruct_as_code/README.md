@@ -30,6 +30,7 @@ cd infrastruct_as_code
 | `iam.tf` | Cloud Run 的執行身分與最小權限 |
 | `cloud_run.tf` | `blog` 服務（scale-to-zero、上限 3 個實例） |
 | `budget.tf` | NT$1 預算警示 |
+| `firebase.tf` | 後台的 Firebase Web App 註冊（需要 `google-beta` provider） |
 
 ## 幾個刻意的決定
 

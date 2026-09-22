@@ -38,3 +38,9 @@ variable "site_base_url" {
   type        = string
   default     = ""
 }
+
+variable "admin_uids" {
+  description = "Firebase Auth UIDs allowed to use the admin API. Get yours from the Firebase console under Authentication → Users after signing in once. Not a secret — a UID identifies an account but grants nothing on its own; the server still verifies a signed ID token before comparing against this list. Empty means the admin API is closed to everyone, which is the correct default: a typo here should lock you out, never let the world in."
+  type        = list(string)
+  default     = []
+}

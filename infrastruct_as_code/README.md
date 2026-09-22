@@ -75,7 +75,13 @@ curl https://storage.googleapis.com/storage/v1/b/cindle-blog-uploads/o
 
 1. **Firebase Auth 的登入方式**
    <https://console.firebase.google.com/project/cindle-blog/authentication/providers>
-   啟用 Google 登入，然後把你的 UID 填進 Cloud Run 的 `ADMIN_UIDS`。
+   啟用 Google 登入，登入一次，再從 Authentication → Users 複製 UID，
+   填進 `terraform.tfvars` 的 `admin_uids` 後 apply。
+
+   > Terraform 其實有 `google_identity_platform_default_supported_idp_config`，
+   > 但它必填 `client_id` / `client_secret`，而**建立 OAuth 用戶端沒有 API**——
+   > 你還是得先去 Console 建，再把機密複製進 tfvars。Console 按一下反而是
+   > 三步變一步，而且少一個機密要保管。所以這裡刻意不用 Terraform。
 
 2. **Firebase Hosting 的網站與網域**
    `firebase init hosting` 之後在 `firebase.json` 設定 rewrite 指向 Cloud Run。

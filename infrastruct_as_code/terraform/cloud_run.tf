@@ -57,6 +57,18 @@ resource "google_cloud_run_v2_service" "server" {
         value = google_storage_bucket.uploads.name
       }
 
+      # Comma-separated allowlist for /api/*. Verifying the Firebase ID token
+      # only establishes WHO the caller is — every Google account on earth can
+      # obtain a valid one. This is what establishes whether they may write.
+      #
+      # The server must refuse to start when this is empty rather than falling
+      # back to "allow anyone": an unset variable is a deployment mistake, and
+      # the safe reading of a mistake is no access, not total access.
+      env {
+        name  = "ADMIN_UIDS"
+        value = join(",", var.admin_uids)
+      }
+
       startup_probe {
         tcp_socket {
           port = 8080

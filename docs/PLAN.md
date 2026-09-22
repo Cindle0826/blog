@@ -56,7 +56,15 @@
 - [x] 1.2　`internal/view/model.go`
 - [x] 1.3　`docs/API.md`
 - [x] 1.4　路由表（見下）
-- [ ] 1.5　**cindle review 上面三份**，確認實作得出來
+- [ ] 1.5　**cindle review 上面三份**，確認實作得出來　← 開工前唯一剩下的關卡
+
+最想聽意見的三點：
+
+| 檔案 | 判斷 |
+|---|---|
+| `FIRESTORE.md` | 存 `markdown` 也存 `html`——用空間換 CPU |
+| `model.go` | `PostDetail` 的 `Related` / `Prev` / `Next` 都要額外查詢 |
+| `API.md` | `PATCH` 一個端點帶六個連帶動作 |
 
 ### 路由表
 

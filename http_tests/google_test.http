@@ -48,6 +48,7 @@
 # 注意 key 用的是 Firebase 的 Web API key，不是任何機密——它是專案識別碼，
 # 會被編進前端 bundle，設計上就是公開的。
 
+# @no-log
 POST https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={{firebaseApiKey}}
 Content-Type: application/json
 

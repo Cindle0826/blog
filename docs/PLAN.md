@@ -1,6 +1,6 @@
 # 開發計畫
 
-最後更新：2026-09-21
+最後更新：2026-09-22
 
 ## 決策紀錄
 
@@ -8,9 +8,9 @@
 |---|---|
 | 架構 | Go + `html/template`（Cloud Run）＋ Firebase Hosting CDN ＋ Firestore ＋ Firebase Auth |
 | 後台 | 獨立的 Vite + React + TypeScript SPA，掛在 `/admin` |
-| 網域 | 待定（`cindle.dev` 為首選，DNS 查詢顯示未被註冊） |
+| 網域 | `cindle.dev`（DNS 查詢未被註冊）。等其餘項目確認後再購買 |
 | 語言 | 中英混排，`lang="zh-Hant"` |
-| 字型 | 待定，預覽站有 A/B/C/D 四案可即時切換 |
+| 字型 | **方案 A** — 標題 JetBrains Mono ／ 內文 Inter ／ 中文思源黑體（2026-09-22 確認） |
 | Blog vs 知識庫 | 同一個 collection，用 `kind` 欄位區分；標籤共用 |
 | 留言 | 暫不做，全部完成後再評估 giscus |
 | 優先序 | SEO > 成本 0 元 > 技術棧偏好 |
@@ -88,7 +88,7 @@
 - [x] 2B.5　主題切換（無閃爍）
 - [x] 2B.6　`.prose` 內文樣式：程式碼、表格、引言、目錄
 - [x] 2B.7　響應式（手機兩列頁首、桌機浮動目錄）
-- [ ] 2B.8　**cindle 確認風格與字型方案**
+- [x] 2B.8　**cindle 確認風格與字型方案** — 風格通過；字型選 A
 - [ ] 2B.9　依回饋調整
 
 ## Phase 3 — 接合　`一起`
@@ -140,7 +140,10 @@
 
 ## 目前狀態
 
-Phase 1 完成，Phase 2B 完成待確認。
+Phase 1 完成（三份契約待 cindle review）。Phase 2B 完成，風格與字型已確認。
+
+下一步：cindle 做 Phase 0（GCP 環境）與 1.5（review 契約）；
+Claude 等契約確認後開始 Phase 4 的 React 後台。
 
 預覽站：
 

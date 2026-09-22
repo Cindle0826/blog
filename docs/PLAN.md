@@ -37,10 +37,10 @@
 
 - [x] 0.1　建立 GCP 專案 `cindle-blog`（專案編號 802326727219）
 - [x] 0.2　寫好 IaC（Terraform + 腳本）
-- [ ] 0.3　`./scripts/00-prereqs.sh` — 接計費帳戶
-- [ ] 0.4　`./scripts/01-state-bucket.sh` — 建 state bucket
-- [ ] 0.5　填 `terraform.tfvars`，跑 `./scripts/02-apply.sh --apply`
-      （預算警示、Firestore、索引、Artifact Registry、上傳 bucket、Cloud Run 一次建好）
+- [x] 0.3　`./scripts/00-prereqs.sh` — 接計費帳戶
+- [x] 0.4　`./scripts/01-state-bucket.sh` — 建 state bucket
+- [x] 0.5　`./scripts/02-apply.sh --apply` — 25 個資源建立完成（2026-09-22）
+      Cloud Run：`https://blog-3e5cnz7acq-de.a.run.app`（目前是佔位 image）
 - [ ] 0.6　`./scripts/03-local-dev-auth.sh` — 本機 ADC
 - [ ] 0.7　Console 手動開 Firebase Auth 的 Google 登入（無 Terraform 資源）
 - [ ] 0.8　`npm i -g firebase-tools` 然後 `firebase login`

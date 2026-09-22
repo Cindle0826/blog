@@ -1,9 +1,16 @@
+# Cloud Billing 的 Budget API 會把 projects/<id> 正規化成 projects/<number>
+# 存回去，所以設定裡如果寫 project_id，每次 plan 都會看到一個改不掉的差異
+# （想把 number 改回 id，改完 API 又轉成 number）。查一次編號來用就穩定了。
+data "google_project" "this" {
+  project_id = var.project_id
+}
+
 resource "google_billing_budget" "monthly" {
   billing_account = var.billing_account
   display_name    = "cindle-blog monthly budget"
 
   budget_filter {
-    projects = ["projects/${var.project_id}"]
+    projects = ["projects/${data.google_project.this.number}"]
   }
 
   amount {

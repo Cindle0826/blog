@@ -1,0 +1,169 @@
+### Firebase Auth / Google 身分相關的手動測試
+#
+# 用 GoLand 內建的 HTTP Client 跑（點每個請求左邊的 ▶）。
+# 變數分兩個檔：
+#   http-client.env.json          公開值，進版控
+#   http-client.private.env.json  ID token 這類短期憑證，已 gitignore
+#
+# 開始之前先拿一個 ID token：
+#   1. cd ~/go-projects/blog && python3 -m http.server 8000
+#   2. 開 http://localhost:8000/scripts/get-uid.html，用 Google 登入
+#   3. 複製 ID token，貼進 http-client.private.env.json 的 idToken
+#
+# token 有效一小時。過期了跑「4. 換新的 ID token」那一則，或重拿一次。
+
+
+### ───────────────────────────────────────────────────────────
+### 1. 用 ID token 換取使用者資訊　← 你問的就是這支
+### ───────────────────────────────────────────────────────────
+#
+# 這是 Firebase 的 Identity Toolkit API，不是 Google OAuth 的 API。
+#
+# 它同時做兩件事：驗證 token（過期或被竄改會回 400），以及回傳使用者
+# 記錄。所以拿它來確認「我的 token 是好的，而且對應到正確的 UID」最直接。
+#
+# 注意 key 用的是 Firebase 的 Web API key，不是任何機密——它是專案識別碼，
+# 會被編進前端 bundle，設計上就是公開的。
+
+POST https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={{firebaseApiKey}}
+Content-Type: application/json
+
+{
+  "idToken": "{{idToken}}"
+}
+
+> {%
+    client.test("回傳 200", function() {
+        client.assert(response.status === 200, "狀態碼是 " + response.status);
+    });
+    client.test("UID 與 admin_uids 一致", function() {
+        const u = response.body.users[0];
+        client.log("UID      : " + u.localId);
+        client.log("email    : " + u.email);
+        client.log("provider : " + u.providerUserInfo.map(p => p.providerId).join(", "));
+        client.assert(u.localId === "KyYz0RfQ6fMXtmC2y2vLaC81xV32", "UID 不符：" + u.localId);
+    });
+%}
+
+
+### ───────────────────────────────────────────────────────────
+### 2. 故意用壞掉的 token —— 確認驗證真的有在做事
+### ───────────────────────────────────────────────────────────
+#
+# 只測成功路徑的話，你不會知道驗證是不是根本沒生效。
+# 這則應該回 400 INVALID_ID_TOKEN。
+
+POST https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={{firebaseApiKey}}
+Content-Type: application/json
+
+{
+  "idToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.這串是亂打的.signature"
+}
+
+> {%
+    client.test("壞 token 應該被拒絕", function() {
+        client.assert(response.status === 400, "預期 400，得到 " + response.status);
+        client.log("錯誤訊息：" + response.body.error.message);
+    });
+%}
+
+
+### ───────────────────────────────────────────────────────────
+### 3. 這個 token 是誰簽的 —— 看 Google 的公鑰
+### ───────────────────────────────────────────────────────────
+#
+# Firebase ID token 是用這組公鑰驗證的。你的 Go 後端啟動時會抓一份快取
+# 起來，之後每個請求都在本機驗簽，不會再打網路——所以驗證一個 token
+# 是微秒級的運算，不是一次 API 往返。
+#
+# 回應的 Cache-Control 標頭會告訴你多久該重抓一次。
+
+GET https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com
+
+> {%
+    client.test("拿得到公鑰", function() {
+        client.assert(response.status === 200);
+        client.log("公鑰數量：" + Object.keys(response.body).length);
+        client.log("快取指示：" + response.headers.valueOf("cache-control"));
+    });
+%}
+
+
+### ───────────────────────────────────────────────────────────
+### 4. 換新的 ID token（不用重新登入）
+### ───────────────────────────────────────────────────────────
+#
+# ID token 一小時就過期，但 refresh token 不會。把 get-uid.html 那邊的
+# refreshToken 存進 private env 之後，跑這則就能換一張新的，
+# 而且會自動寫回 idToken 變數，接著就能直接跑第 1 則。
+
+POST https://securetoken.googleapis.com/v1/token?key={{firebaseApiKey}}
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token&refresh_token={{refreshToken}}
+
+> {%
+    client.test("換到新 token", function() {
+        client.assert(response.status === 200, "狀態碼是 " + response.status);
+        client.global.set("idToken", response.body.id_token);
+        client.log("新 token 已寫入 idToken 變數，有效 " + response.body.expires_in + " 秒");
+    });
+%}
+
+
+### ───────────────────────────────────────────────────────────
+### 5. 參考：OAuth2 的最後一步長什麼樣
+### ───────────────────────────────────────────────────────────
+#
+# get-uid.html 按下去之後，瀏覽器背後實際發生的事：
+#
+#   你的頁面
+#     └─→ https://cindle-blog.firebaseapp.com/__/auth/handler   ← Firebase 的轉接站
+#           └─→ https://accounts.google.com/o/oauth2/auth       ← Google 真正的 OAuth 入口
+#                 └─ 你在這裡同意授權
+#           ←─┘ Google 帶著 id_token 導回 handler
+#     ←────┘ handler 把 id_token 交還給 SDK
+#     └─→ accounts:signInWithIdp                                ← 下面這支
+#           └─ 拿 Google 的 id_token 換 Firebase 的 ID token
+#
+# 所以 cindle-blog.firebaseapp.com 不是 Google 的登入入口，而是
+# Firebase 的「OAuth 轉接站」——它的用途是讓你所有的 app 共用同一個
+# 在 Google 註冊過的 redirect_uri，你就不必每加一個網域就回去改設定。
+#
+# 這則沒辦法直接跑，因為 googleIdToken 要從瀏覽器的 OAuth 流程才拿得到。
+# 留著是當作文件看，理解那條鏈。
+#
+# POST https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key={{firebaseApiKey}}
+# Content-Type: application/json
+#
+# {
+#   "postBody": "id_token=<Google 給的 id_token>&providerId=google.com",
+#   "requestUri": "http://localhost",
+#   "returnSecureToken": true
+# }
+
+
+### ───────────────────────────────────────────────────────────
+### 6. 打自己的 API（等 cmd/server 寫好再跑）
+### ───────────────────────────────────────────────────────────
+#
+# 目前 /api/* 還不存在，cmd/server/ 是空的。等 Phase 2A / 4.3 做完之後，
+# 這三則就是驗證白名單機制的測試。三種情況都要對，不是只測成功那個。
+
+# 6a. 帶有效 token 且 UID 在白名單 → 預期 200
+GET {{apiBase}}/api/posts
+Authorization: Bearer {{idToken}}
+
+###
+
+# 6b. 不帶 Authorization → 預期 401 unauthorized
+GET {{apiBase}}/api/posts
+
+###
+
+# 6c. 帶「不在白名單」的 token → 預期 403 forbidden
+#     這則最重要：它證明「驗證身分」與「檢查權限」是分開的兩道關卡。
+#     只做第一道的話，全世界有 Google 帳號的人都能發文。
+#     測法見 docs/LOCAL-AUTH.md，用模擬器多建一個帳號。
+GET {{apiBase}}/api/posts
+Authorization: Bearer {{otherUserIdToken}}

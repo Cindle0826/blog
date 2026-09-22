@@ -11,6 +11,9 @@ service-account*.json
 .env.*
 !.env.example
 
+# GoLand HTTP Client 的私有變數（放 ID token）
+http-client.private.env.json
+
 # Firebase
 .firebase/
 .firebaserc

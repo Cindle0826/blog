@@ -57,6 +57,9 @@
 - [x] 1.3　`docs/API.md`
 - [x] 1.4　路由表（見下）
 - [ ] 1.5　**cindle review 上面三份**，確認實作得出來　← 開工前唯一剩下的關卡
+  - [x] 契約① `internal/view/model.go` — 2026-09-27 通過，無意見
+  - [ ] 契約② `docs/API.md`
+  - [ ] 契約③ `docs/FIRESTORE.md`
 
 最想聽意見的三點：
 

@@ -1,4 +1,4 @@
-package util
+package handler
 
 import (
 	"log/slog"
@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func LoggerMiddleware(next http.Handler) http.Handler {
+func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
@@ -17,5 +17,17 @@ func LoggerMiddleware(next http.Handler) http.Handler {
 			"ip", r.RemoteAddr,
 			"costs(MS)", time.Since(start).Milliseconds(),
 		)
+	})
+}
+
+func CORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	})
+}
+
+func Recover(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 	})
 }

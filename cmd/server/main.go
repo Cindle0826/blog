@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"os"
 
-	"cindle.dev/blog/internal/api"
 	"cindle.dev/blog/internal/auth"
+	h "cindle.dev/blog/internal/handler"
 	"cindle.dev/blog/internal/util"
 )
 
@@ -17,14 +17,15 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	mux := http.NewServeMux()
+	api := http.NewServeMux()
+	api.HandleFunc("POST /posts", h.PingHandler)
 
-	mux.HandleFunc("POST /api/posts", api.PingHandler)
+	root := http.NewServeMux()
+	root.Handle("/api/", http.StripPrefix("/api", auth.RequireAdmin(api)))
 
 	// middleware
-	var handler http.Handler = mux
-	handler = auth.AuthMiddleware(handler)
-	handler = util.LoggerMiddleware(handler)
+	var handler http.Handler = root
+	handler = h.Logger(handler)
 
 	addr := ":" + util.GetEnvOr("PORT", "8080")
 	slog.Info("Server Running ...", "port", addr)

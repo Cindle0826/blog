@@ -22,6 +22,7 @@
 ### ═══════════════════════════════════════════════════════════
 ### 1. 認證：不帶 token → 401
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 GET {{apiBase}}/api/posts
 
 > {%
@@ -31,7 +32,9 @@ GET {{apiBase}}/api/posts
     });
     client.test("錯誤格式符合契約", function() {
         const e = response.body.error;
-        client.assert(e !== undefined, "回應少了 error 物件");
+        client.assert(e !== undefined,
+            "回應少了 error 物件。契約要的是 {\"error\":{\"code\",\"message\"}}，" +
+            "實際收到：" + JSON.stringify(response.body));
         client.assert(e.code === "unauthorized", "code 應為 unauthorized，得到 " + e.code);
         client.assert(typeof e.message === "string" && e.message.length > 0,
             "message 應該是給人看的非空字串");
@@ -39,16 +42,21 @@ GET {{apiBase}}/api/posts
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 2. 認證：token 有效但 UID 不在白名單 → 403
 ### ═══════════════════════════════════════════════════════════
 #
 # 這則是整份檔案最重要的一則。它驗證「驗證身分」與「檢查權限」確實是
 # 兩道獨立的關卡——只做第一道的話，全世界有 Google 帳號的人都能發文。
 #
-# 需要 otherUserIdToken。用 Auth 模擬器建第二個帳號取得，做法見
-# docs/LOCAL-AUTH.md。還沒準備好就先跳過這則，但別忘記回來補。
+# 前置條件：http-client.private.env.json 的 otherUserIdToken 要填一個
+# 「合法但 UID 不在 ADMIN_UIDS」的 token。
+#
+# 最簡單的拿法是用第二個 Google 帳號（例如公司帳號）登入 scripts/get-uid.html。
+# 注意不要填成自己的 token——那樣測到的是「白名單設錯了」而不是「白名單有生效」。
+#
+# 還沒準備好就先跳過這則，但別忘記回來補：它是唯一能證明白名單真的生效的測試。
 
+# @no-log
 GET {{apiBase}}/api/posts
 Authorization: Bearer {{otherUserIdToken}}
 
@@ -59,9 +67,10 @@ Authorization: Bearer {{otherUserIdToken}}
             "。如果是 200，代表白名單檢查沒生效——任何 Google 帳號都能操作後台");
     });
     client.test("code 是 forbidden 不是 unauthorized", function() {
-        client.assert(response.body.error.code === "forbidden",
+        const code = (response.body.error || {}).code;
+        client.assert(code === "forbidden",
             "401/unauthorized 是「你是誰」的問題，403/forbidden 是「你能做什麼」的問題，" +
-            "兩者不該混用。得到 " + response.body.error.code);
+            "兩者不該混用。得到 " + code);
     });
 %}
 
@@ -69,6 +78,7 @@ Authorization: Bearer {{otherUserIdToken}}
 ### ═══════════════════════════════════════════════════════════
 ### 3. 建立文章 → 201，且一律是 draft
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 POST {{apiBase}}/api/posts
 Authorization: Bearer {{idToken}}
 Content-Type: application/json
@@ -116,6 +126,7 @@ Content-Type: application/json
 ### ═══════════════════════════════════════════════════════════
 ### 4. 取單篇 → 有 markdown，沒有 html
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 GET {{apiBase}}/api/posts/{{postId}}
 Authorization: Bearer {{idToken}}
 
@@ -147,6 +158,7 @@ Authorization: Bearer {{idToken}}
 ### ═══════════════════════════════════════════════════════════
 ### 5. 列表 → 不含全文
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 GET {{apiBase}}/api/posts?status=all&limit=10
 Authorization: Bearer {{idToken}}
 
@@ -185,6 +197,7 @@ Authorization: Bearer {{idToken}}
 # 這則同時檢查 API.md 列的六個連帶動作裡，前端看得到的那幾個。
 # toc / readingMin / hasCode 不在回應裡，要自己看 Firestore 確認。
 
+# @no-log
 PATCH {{apiBase}}/api/posts/{{postId}}
 Authorization: Bearer {{idToken}}
 Content-Type: application/json
@@ -228,6 +241,7 @@ Content-Type: application/json
 ### ═══════════════════════════════════════════════════════════
 ### 7. 發布 → status 與 publishedAt
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 POST {{apiBase}}/api/posts/{{postId}}/publish
 Authorization: Bearer {{idToken}}
 Content-Type: application/json
@@ -258,6 +272,7 @@ Content-Type: application/json
 # 這是容易寫錯的一條。退回草稿時把 publishedAt 清掉的話，重新發布時
 # 日期會跳成今天——一篇去年的文章突然變成新文章，sitemap 和 feed 都會亂。
 
+# @no-log
 POST {{apiBase}}/api/posts/{{postId}}/publish
 Authorization: Bearer {{idToken}}
 Content-Type: application/json
@@ -281,6 +296,7 @@ Content-Type: application/json
 ### ═══════════════════════════════════════════════════════════
 ### 9. 找不到的文章 → 404
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 GET {{apiBase}}/api/posts/definitely-not-a-real-id-xyz
 Authorization: Bearer {{idToken}}
 
@@ -291,8 +307,9 @@ Authorization: Bearer {{idToken}}
             "Firestore 的 NotFound 要轉成哨兵錯誤再轉成 404");
     });
     client.test("code 是 not_found", function() {
-        client.assert(response.body.error.code === "not_found",
-            "得到 " + response.body.error.code);
+        const code = (response.body.error || {}).code;
+            client.assert(code === "not_found",
+                "得到 " + code);
     });
 %}
 
@@ -300,6 +317,7 @@ Authorization: Bearer {{idToken}}
 ### ═══════════════════════════════════════════════════════════
 ### 10. slug 撞號 → 409
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 POST {{apiBase}}/api/posts
 Authorization: Bearer {{idToken}}
 Content-Type: application/json
@@ -316,8 +334,9 @@ Content-Type: application/json
             "不要默默改成別的或覆蓋既有文章");
     });
     client.test("code 是 slug_conflict", function() {
-        client.assert(response.body.error.code === "slug_conflict",
-            "得到 " + response.body.error.code);
+        const code = (response.body.error || {}).code;
+            client.assert(code === "slug_conflict",
+                "得到 " + code);
     });
 %}
 
@@ -325,6 +344,7 @@ Content-Type: application/json
 ### ═══════════════════════════════════════════════════════════
 ### 11. 欄位缺漏 → 400
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 POST {{apiBase}}/api/posts
 Authorization: Bearer {{idToken}}
 Content-Type: application/json
@@ -334,8 +354,9 @@ Content-Type: application/json
 > {%
     client.test("少了必填的 title → 400", function() {
         client.assert(response.status === 400, "得到 " + response.status);
-        client.assert(response.body.error.code === "invalid_request",
-            "得到 " + response.body.error.code);
+        const code = (response.body.error || {}).code;
+            client.assert(code === "invalid_request",
+                "得到 " + code);
     });
 %}
 
@@ -343,6 +364,7 @@ Content-Type: application/json
 ### ═══════════════════════════════════════════════════════════
 ### 12. 標籤列表
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 GET {{apiBase}}/api/tags
 Authorization: Bearer {{idToken}}
 
@@ -365,6 +387,7 @@ Authorization: Bearer {{idToken}}
 ### ═══════════════════════════════════════════════════════════
 ### 13. 改標籤顯示名稱
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 PUT {{apiBase}}/api/tags/go
 Authorization: Bearer {{idToken}}
 Content-Type: application/json
@@ -384,6 +407,7 @@ Content-Type: application/json
 #
 # 需要一個真的檔案。把任意圖片放到 http_tests/fixtures/sample.png 再跑。
 
+# @no-log
 POST {{apiBase}}/api/uploads
 Authorization: Bearer {{idToken}}
 Content-Type: multipart/form-data; boundary=WebAppBoundary
@@ -426,6 +450,7 @@ Content-Type: image/png
 ### ═══════════════════════════════════════════════════════════
 ### 15. 讀取圖片（公開路由，不帶 token）
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 GET {{apiBase}}{{uploadedPath}}
 
 > {%
@@ -452,6 +477,7 @@ GET {{apiBase}}{{uploadedPath}}
 ### ═══════════════════════════════════════════════════════════
 ### 16. 路徑穿越必須被擋
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 GET {{apiBase}}/images/../../etc/passwd
 
 > {%
@@ -466,6 +492,7 @@ GET {{apiBase}}/images/../../etc/passwd
 ### ═══════════════════════════════════════════════════════════
 ### 17. 快取失效
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 POST {{apiBase}}/api/cache/purge
 Authorization: Bearer {{idToken}}
 Content-Type: application/json
@@ -483,6 +510,7 @@ Content-Type: application/json
 ### ═══════════════════════════════════════════════════════════
 ### 18. 收尾：刪除測試文章
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 DELETE {{apiBase}}/api/posts/{{postId}}
 Authorization: Bearer {{idToken}}
 
@@ -496,6 +524,7 @@ Authorization: Bearer {{idToken}}
 ### ═══════════════════════════════════════════════════════════
 ### 19. 確認真的刪掉了
 ### ═══════════════════════════════════════════════════════════
+# @no-log
 GET {{apiBase}}/api/posts/{{postId}}
 Authorization: Bearer {{idToken}}
 

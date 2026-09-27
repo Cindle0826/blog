@@ -1,0 +1,507 @@
+### 契約② 的可執行版本
+#
+# docs/API.md 每個端點對應一則請求，帶斷言。你實作一個 handler 就跑一次，
+# 它會直接告訴你回傳的形狀跟契約對不對——不用等前端接上去才發現不一致。
+#
+# ── 怎麼跑 ───────────────────────────────────────────────────
+#
+# 1. 右上角環境選 local（或 cloudrun）
+# 2. 確認 http-client.private.env.json 裡有 idToken
+#    （沒有的話：python3 -m http.server 8000，開 scripts/get-uid.html）
+# 3. 從上往下跑。第 3 則會建立一篇測試文章，後面的請求靠它串起來，
+#    最後一則會刪掉。中途失敗的話重跑一次第 3 則就好。
+#
+# 「Run all requests in file」可以一次跑完整個流程。
+#
+# ── 目前預期會全部失敗 ───────────────────────────────────────
+#
+# cmd/server 還沒實作，所以現在跑會全部連不上。這是刻意的：這份檔案是
+# 你的靶子，實作到哪就有幾則變綠。
+
+
+### ═══════════════════════════════════════════════════════════
+### 1. 認證：不帶 token → 401
+### ═══════════════════════════════════════════════════════════
+GET {{apiBase}}/api/posts
+
+> {%
+    client.test("回 401 而不是 200", function() {
+        client.assert(response.status === 401,
+            "預期 401，得到 " + response.status + "。沒帶 token 就能讀後台是嚴重問題");
+    });
+    client.test("錯誤格式符合契約", function() {
+        const e = response.body.error;
+        client.assert(e !== undefined, "回應少了 error 物件");
+        client.assert(e.code === "unauthorized", "code 應為 unauthorized，得到 " + e.code);
+        client.assert(typeof e.message === "string" && e.message.length > 0,
+            "message 應該是給人看的非空字串");
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 2. 認證：token 有效但 UID 不在白名單 → 403
+### ═══════════════════════════════════════════════════════════
+#
+# 這則是整份檔案最重要的一則。它驗證「驗證身分」與「檢查權限」確實是
+# 兩道獨立的關卡——只做第一道的話，全世界有 Google 帳號的人都能發文。
+#
+# 需要 otherUserIdToken。用 Auth 模擬器建第二個帳號取得，做法見
+# docs/LOCAL-AUTH.md。還沒準備好就先跳過這則，但別忘記回來補。
+
+GET {{apiBase}}/api/posts
+Authorization: Bearer {{otherUserIdToken}}
+
+> {%
+    client.test("非白名單使用者被擋在 403", function() {
+        client.assert(response.status === 403,
+            "預期 403，得到 " + response.status +
+            "。如果是 200，代表白名單檢查沒生效——任何 Google 帳號都能操作後台");
+    });
+    client.test("code 是 forbidden 不是 unauthorized", function() {
+        client.assert(response.body.error.code === "forbidden",
+            "401/unauthorized 是「你是誰」的問題，403/forbidden 是「你能做什麼」的問題，" +
+            "兩者不該混用。得到 " + response.body.error.code);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 3. 建立文章 → 201，且一律是 draft
+### ═══════════════════════════════════════════════════════════
+POST {{apiBase}}/api/posts
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{
+  "title": "契約測試 {{$timestamp}}",
+  "kind": "post",
+  "markdown": "## 第一段\n\n這是測試內容。",
+  "tagSlugs": ["go"]
+}
+
+> {%
+    client.test("回 201", function() {
+        client.assert(response.status === 201, "預期 201，得到 " + response.status);
+    });
+
+    const p = response.body;
+
+    client.test("一律建成 draft", function() {
+        client.assert(p.status === "draft",
+            "契約寫明新文章不能直接建成已發布，得到 status=" + p.status);
+        client.assert(p.publishedAt === null,
+            "draft 的 publishedAt 必須是 null（不是省略、不是空字串），得到 " + JSON.stringify(p.publishedAt));
+    });
+
+    client.test("slug 已自動產生", function() {
+        client.assert(typeof p.slug === "string" && p.slug.length > 0,
+            "slug 留空時後端要自己生一個");
+    });
+
+    client.test("回傳完整物件（與 GET /api/posts/{id} 同形狀）", function() {
+        ["id","slug","kind","status","title","summary","markdown","tagSlugs",
+         "pinned","publishedAt","createdAt","updatedAt"].forEach(function(k) {
+            client.assert(p[k] !== undefined, "少了欄位 " + k);
+        });
+    });
+
+    client.global.set("postId", p.id);
+    client.global.set("postSlug", p.slug);
+    client.global.set("createdUpdatedAt", p.updatedAt);
+    client.log("建立的測試文章 id=" + p.id + " slug=" + p.slug);
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 4. 取單篇 → 有 markdown，沒有 html
+### ═══════════════════════════════════════════════════════════
+GET {{apiBase}}/api/posts/{{postId}}
+Authorization: Bearer {{idToken}}
+
+> {%
+    client.test("回 200", function() {
+        client.assert(response.status === 200, "得到 " + response.status);
+    });
+
+    const p = response.body;
+
+    client.test("有 markdown", function() {
+        client.assert(typeof p.markdown === "string", "編輯頁需要 markdown");
+    });
+
+    client.test("沒有 html", function() {
+        client.assert(p.html === undefined,
+            "契約寫明不回傳 html——前端自己即時預覽，後端那份對它沒用，白白增加傳輸量");
+    });
+
+    client.test("時間是 UTC 的 RFC3339 字串", function() {
+        client.assert(typeof p.createdAt === "string",
+            "契約要求時間一律是字串，不要回 Unix timestamp");
+        client.assert(/Z$|[+-]\d{2}:\d{2}$/.test(p.createdAt),
+            "createdAt 少了時區標示：" + p.createdAt);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 5. 列表 → 不含全文
+### ═══════════════════════════════════════════════════════════
+GET {{apiBase}}/api/posts?status=all&limit=10
+Authorization: Bearer {{idToken}}
+
+> {%
+    client.test("回 200", function() {
+        client.assert(response.status === 200, "得到 " + response.status);
+    });
+
+    client.test("外層是 items + nextCursor", function() {
+        client.assert(Array.isArray(response.body.items), "items 必須是陣列");
+        client.assert("nextCursor" in response.body,
+            "nextCursor 一定要有這個 key，沒有下一頁時值為 null——" +
+            "前端靠它判斷還能不能往下翻");
+    });
+
+    client.test("列表不夾帶 markdown / html", function() {
+        response.body.items.forEach(function(p, i) {
+            client.assert(p.markdown === undefined,
+                "第 " + i + " 筆夾帶了 markdown。50 篇文章的全文會讓回應變成好幾 MB");
+            client.assert(p.html === undefined, "第 " + i + " 筆夾帶了 html");
+        });
+    });
+
+    client.test("剛建立的文章在列表裡", function() {
+        const id = client.global.get("postId");
+        client.assert(response.body.items.some(function(p) { return p.id === id; }),
+            "找不到剛建立的 " + id);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 6. PATCH → 只動有送的欄位
+### ═══════════════════════════════════════════════════════════
+#
+# 這則同時檢查 API.md 列的六個連帶動作裡，前端看得到的那幾個。
+# toc / readingMin / hasCode 不在回應裡，要自己看 Firestore 確認。
+
+PATCH {{apiBase}}/api/posts/{{postId}}
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{
+  "markdown": "## 改過的第一段\n\n```go\nfmt.Println(\"hi\")\n```\n\n## 第二段\n\n多一段。"
+}
+
+> {%
+    client.test("回 200 並帶回完整物件", function() {
+        client.assert(response.status === 200, "得到 " + response.status);
+        client.assert(response.body.id !== undefined,
+            "PATCH 要回傳更新後的完整物件，前端才不用再發一次 GET");
+    });
+
+    const p = response.body;
+
+    client.test("markdown 已更新", function() {
+        client.assert(p.markdown.indexOf("改過的第一段") >= 0, "內容沒更新");
+    });
+
+    client.test("沒送的欄位維持原狀", function() {
+        client.assert(p.title.indexOf("契約測試") === 0,
+            "title 沒送卻被改掉了——PATCH 要用 Firestore 的 Update 不是 Set");
+        client.assert(Array.isArray(p.tagSlugs) && p.tagSlugs.length === 1,
+            "tagSlugs 沒送卻被清空了，同上");
+    });
+
+    client.test("updatedAt 有前進", function() {
+        const before = client.global.get("createdUpdatedAt");
+        client.assert(p.updatedAt !== before,
+            "updatedAt 沒變。每次存檔都該更新：" + before);
+    });
+
+    client.test("仍是 draft", function() {
+        client.assert(p.status === "draft", "PATCH 不應該改變發布狀態");
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 7. 發布 → status 與 publishedAt
+### ═══════════════════════════════════════════════════════════
+POST {{apiBase}}/api/posts/{{postId}}/publish
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "publish": true }
+
+> {%
+    client.test("回 200", function() {
+        client.assert(response.status === 200, "得到 " + response.status);
+    });
+
+    const p = response.body;
+
+    client.test("變成 published 且有發布時間", function() {
+        client.assert(p.status === "published", "得到 " + p.status);
+        client.assert(p.publishedAt !== null && p.publishedAt !== undefined,
+            "第一次發布要設定 publishedAt");
+    });
+
+    client.global.set("firstPublishedAt", p.publishedAt);
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 8. 退回草稿 → publishedAt 必須保持不變
+### ═══════════════════════════════════════════════════════════
+#
+# 這是容易寫錯的一條。退回草稿時把 publishedAt 清掉的話，重新發布時
+# 日期會跳成今天——一篇去年的文章突然變成新文章，sitemap 和 feed 都會亂。
+
+POST {{apiBase}}/api/posts/{{postId}}/publish
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "publish": false }
+
+> {%
+    client.test("回到 draft", function() {
+        client.assert(response.body.status === "draft", "得到 " + response.body.status);
+    });
+
+    client.test("publishedAt 沒有被清掉", function() {
+        const before = client.global.get("firstPublishedAt");
+        client.assert(response.body.publishedAt === before,
+            "publishedAt 從 " + before + " 變成 " + response.body.publishedAt +
+            "。退回草稿不該動它，否則重新發布時日期會跳掉");
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 9. 找不到的文章 → 404
+### ═══════════════════════════════════════════════════════════
+GET {{apiBase}}/api/posts/definitely-not-a-real-id-xyz
+Authorization: Bearer {{idToken}}
+
+> {%
+    client.test("回 404 而不是 500", function() {
+        client.assert(response.status === 404,
+            "得到 " + response.status + "。「找不到」是正常結果不是錯誤，" +
+            "Firestore 的 NotFound 要轉成哨兵錯誤再轉成 404");
+    });
+    client.test("code 是 not_found", function() {
+        client.assert(response.body.error.code === "not_found",
+            "得到 " + response.body.error.code);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 10. slug 撞號 → 409
+### ═══════════════════════════════════════════════════════════
+POST {{apiBase}}/api/posts
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{
+  "title": "另一篇",
+  "slug": "{{postSlug}}"
+}
+
+> {%
+    client.test("回 409", function() {
+        client.assert(response.status === 409,
+            "得到 " + response.status + "。slug 必須全站唯一，撞號要明確回報，" +
+            "不要默默改成別的或覆蓋既有文章");
+    });
+    client.test("code 是 slug_conflict", function() {
+        client.assert(response.body.error.code === "slug_conflict",
+            "得到 " + response.body.error.code);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 11. 欄位缺漏 → 400
+### ═══════════════════════════════════════════════════════════
+POST {{apiBase}}/api/posts
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "kind": "post" }
+
+> {%
+    client.test("少了必填的 title → 400", function() {
+        client.assert(response.status === 400, "得到 " + response.status);
+        client.assert(response.body.error.code === "invalid_request",
+            "得到 " + response.body.error.code);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 12. 標籤列表
+### ═══════════════════════════════════════════════════════════
+GET {{apiBase}}/api/tags
+Authorization: Bearer {{idToken}}
+
+> {%
+    client.test("回 200，外層是 items", function() {
+        client.assert(response.status === 200, "得到 " + response.status);
+        client.assert(Array.isArray(response.body.items), "items 必須是陣列");
+    });
+
+    client.test("每筆有 slug / name / count", function() {
+        response.body.items.forEach(function(t, i) {
+            client.assert(typeof t.slug === "string", "第 " + i + " 筆少了 slug");
+            client.assert(typeof t.name === "string", "第 " + i + " 筆少了 name");
+            client.assert(typeof t.count === "number", "第 " + i + " 筆的 count 不是數字");
+        });
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 13. 改標籤顯示名稱
+### ═══════════════════════════════════════════════════════════
+PUT {{apiBase}}/api/tags/go
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "name": "Go" }
+
+> {%
+    client.test("回 200", function() {
+        client.assert(response.status === 200, "得到 " + response.status);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 14. 圖片上傳
+### ═══════════════════════════════════════════════════════════
+#
+# 需要一個真的檔案。把任意圖片放到 http_tests/fixtures/sample.png 再跑。
+
+POST {{apiBase}}/api/uploads
+Authorization: Bearer {{idToken}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="sample.png"
+Content-Type: image/png
+
+< ./fixtures/sample.png
+--WebAppBoundary--
+
+> {%
+    client.test("回 200", function() {
+        client.assert(response.status === 200, "得到 " + response.status);
+    });
+
+    const r = response.body;
+
+    client.test("回的是站台路徑不是 GCS 網址", function() {
+        client.assert(typeof r.path === "string", "少了 path 欄位");
+        client.assert(r.path.indexOf("/images/") === 0,
+            "path 要以 /images/ 開頭，得到 " + r.path);
+        client.assert(r.path.indexOf("storage.googleapis.com") < 0,
+            "不可以回 GCS 絕對網址——bucket 是私有的，而且那會把儲存供應商寫死進文章內容");
+        client.assert(r.url === undefined,
+            "契約裡沒有 url 欄位，只有 path");
+    });
+
+    client.test("有尺寸", function() {
+        client.assert(typeof r.width === "number" && r.width > 0, "少了 width");
+        client.assert(typeof r.height === "number" && r.height > 0, "少了 height");
+        client.assert(r.width <= 1600,
+            "長邊應該被縮到 1600 以內，得到 " + r.width);
+    });
+
+    client.global.set("uploadedPath", r.path);
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 15. 讀取圖片（公開路由，不帶 token）
+### ═══════════════════════════════════════════════════════════
+GET {{apiBase}}{{uploadedPath}}
+
+> {%
+    client.test("匿名就能讀", function() {
+        client.assert(response.status === 200,
+            "得到 " + response.status + "。這是公開路由，讀者的瀏覽器不會帶 token");
+    });
+
+    client.test("快取標頭設對了", function() {
+        const cc = response.headers.valueOf("Cache-Control") || "";
+        client.assert(cc.indexOf("immutable") >= 0,
+            "檔名帶 UUID、內容永不改變，應該設 immutable。得到：" + cc);
+        client.assert(cc.indexOf("max-age=31536000") >= 0,
+            "應該快取一年。得到：" + cc);
+    });
+
+    client.test("有 ETag", function() {
+        client.assert(response.headers.valueOf("ETag") !== null,
+            "需要 ETag 才能回 304，否則 CDN 每次 miss 都要重傳整個檔案");
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 16. 路徑穿越必須被擋
+### ═══════════════════════════════════════════════════════════
+GET {{apiBase}}/images/../../etc/passwd
+
+> {%
+    client.test("不可以回 200", function() {
+        client.assert(response.status !== 200,
+            "路徑穿越沒擋住。雖然 GCS 的物件名是扁平的、.. 不會真的跳出目錄，" +
+            "但別依賴那個——這道檢查是寫給未來把儲存換成本機檔案系統的人看的");
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 17. 快取失效
+### ═══════════════════════════════════════════════════════════
+POST {{apiBase}}/api/cache/purge
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "paths": ["/", "/posts", "/posts/{{postSlug}}"] }
+
+> {%
+    client.test("回 2xx", function() {
+        client.assert(response.status >= 200 && response.status < 300,
+            "得到 " + response.status);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 18. 收尾：刪除測試文章
+### ═══════════════════════════════════════════════════════════
+DELETE {{apiBase}}/api/posts/{{postId}}
+Authorization: Bearer {{idToken}}
+
+> {%
+    client.test("回 204 且沒有內容", function() {
+        client.assert(response.status === 204, "得到 " + response.status);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 19. 確認真的刪掉了
+### ═══════════════════════════════════════════════════════════
+GET {{apiBase}}/api/posts/{{postId}}
+Authorization: Bearer {{idToken}}
+
+> {%
+    client.test("已經找不到", function() {
+        client.assert(response.status === 404,
+            "得到 " + response.status + "。契約寫明是真刪除，不做軟刪除");
+    });
+%}

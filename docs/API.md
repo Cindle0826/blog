@@ -2,6 +2,9 @@
 
 > 這份文件定義後台（React SPA）跟後端（Go）怎麼溝通。
 > 前端會完全照這份寫，所以你實作時**回應格式要一字不差**。
+>
+> **這份契約有可執行版本：[`../http_tests/api_test.http`](../http_tests/api_test.http)**
+> （43 個測試 / 62 條斷言）。實作一個 handler 就跑一次，它會直接告訴你形狀對不對。
 
 - Base path：`/api`
 - 格式：JSON（`Content-Type: application/json`）

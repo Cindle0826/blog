@@ -111,6 +111,10 @@
 
 ## Phase 2A — 後端骨架　`cindle`
 
+> 實作時開著 [`http_tests/api_test.http`](../http_tests/api_test.http)——
+> 契約② 的每個端點都有對應的請求與斷言，做到哪就有幾則變綠。
+> Firestore 的 Go 寫法對照見 [`FIRESTORE-GO.md`](FIRESTORE-GO.md)。
+
 - [ ] 2A.1　`internal/config` — 從環境變數組出 `view.Site`
 - [ ] 2A.2　`internal/store` — Firestore client 與 CRUD
 - [ ] 2A.3　`internal/markdown` — goldmark + chroma + bluemonday，產出 `html`/`toc`/`readingMin`

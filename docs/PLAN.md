@@ -144,7 +144,7 @@
 ## Phase 4 — 登入與後台
 
 - [ ] 4.1　Firebase Auth Google 登入設定　`cindle`
-- [ ] 4.2　ID token 驗證 middleware + UID 白名單　`cindle`
+- [ ] 4.2　ID token 驗證 middleware + UID 白名單　`cindle`（寫法見 [`AUTH-GO.md`](AUTH-GO.md)）
 - [ ] 4.3　`/api/*` 實作　`cindle`
 - [ ] 4.4　圖片上傳與縮圖　`cindle`
 - [ ] 4.4b　`GET /images/*` 從私有 GCS bucket 串流　`cindle`（規格見 API.md）

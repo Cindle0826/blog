@@ -1,5 +1,8 @@
 # 本機怎麼測登入
 
+> 這份講「怎麼拿到 token 來測」。**middleware 本身怎麼寫看
+> [`AUTH-GO.md`](AUTH-GO.md)** ——那裡有編譯驗證過的程式碼。
+
 要測 `/api/*`，你需要一個 **Firebase ID token** 放進 `Authorization` 標頭。
 這份文件說明怎麼在本機拿到它。
 

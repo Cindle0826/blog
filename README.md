@@ -66,6 +66,7 @@ go run ./cmd/server
 | [docs/FIRESTORE.md](docs/FIRESTORE.md) | Firestore 資料結構契約 |
 | [docs/FIRESTORE-GO.md](docs/FIRESTORE-GO.md) | Firestore 在 Go 裡的寫法（可直接抄） |
 | [http_tests/api_test.http](http_tests/api_test.http) | 契約② 的可執行版本，43 個測試 |
+| [docs/AUTH-GO.md](docs/AUTH-GO.md) | Firebase Auth middleware 的 Go 寫法 |
 | [docs/LOCAL-AUTH.md](docs/LOCAL-AUTH.md) | 本機怎麼用 Auth 模擬器測登入 |
 
 ## 成本

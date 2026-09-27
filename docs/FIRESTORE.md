@@ -1,5 +1,8 @@
 # 契約③ — Firestore 資料結構
 
+> 這份講「存什麼」。**「在 Go 裡怎麼寫」看 [`FIRESTORE-GO.md`](FIRESTORE-GO.md)** ——
+> 那裡有對應每個操作的程式碼，全部編譯驗證過。
+
 > 這份文件定義後端存什麼。改欄位之前先確認 `internal/view/model.go` 要不要跟著改。
 
 Firestore 用 **Native mode**（不是 Datastore mode）。

@@ -37,14 +37,14 @@ Authorization: Bearer <firebase-id-token>
 }
 ```
 
-| HTTP | `code` | 時機 |
-|---|---|---|
-| 400 | `invalid_request` | 欄位缺漏或格式錯 |
-| 401 | `unauthorized` | 沒帶 token、token 過期或無效 |
-| 403 | `forbidden` | token 有效但 UID 不在白名單 |
-| 404 | `not_found` | 文章不存在 |
-| 409 | `slug_conflict` | slug 已被使用 |
-| 500 | `internal` | 其他。**訊息不要吐內部細節** |
+| HTTP | `code`            | 時機                         |
+|------|-------------------|------------------------------|
+| 400  | `invalid_request` | 欄位缺漏或格式錯             |
+| 401  | `unauthorized`    | 沒帶 token、token 過期或無效 |
+| 403  | `forbidden`       | token 有效但 UID 不在白名單  |
+| 404  | `not_found`       | 文章不存在                   |
+| 409  | `slug_conflict`   | slug 已被使用                |
+| 500  | `internal`        | 其他。**訊息不要吐內部細節** |
 
 ---
 
@@ -230,11 +230,11 @@ Markdown 裡長這樣：
 
 把 GCS 的物件串流回去。不需要認證。
 
-| | |
-|---|---|
-| 物件位置 | `gs://{BLOG_UPLOADS_BUCKET}/{path}` |
-| 認證 | 無（公開） |
-| 快取 | `Cache-Control: public, max-age=31536000, immutable` |
+|          |                                                      |
+|----------|------------------------------------------------------|
+| 物件位置 | `gs://{BLOG_UPLOADS_BUCKET}/{path}`                  |
+| 認證     | 無（公開）                                           |
+| 快取     | `Cache-Control: public, max-age=31536000, immutable` |
 
 實作要點：
 

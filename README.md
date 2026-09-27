@@ -64,6 +64,7 @@ go run ./cmd/server
 | [docs/PLAN.md](docs/PLAN.md) | 開發計畫、責任分界、目前進度 |
 | [docs/API.md](docs/API.md) | 後台 REST API 契約 |
 | [docs/FIRESTORE.md](docs/FIRESTORE.md) | Firestore 資料結構契約 |
+| [docs/FIRESTORE-GO.md](docs/FIRESTORE-GO.md) | Firestore 在 Go 裡的寫法（可直接抄） |
 | [docs/LOCAL-AUTH.md](docs/LOCAL-AUTH.md) | 本機怎麼用 Auth 模擬器測登入 |
 
 ## 成本

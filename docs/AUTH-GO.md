@@ -169,6 +169,59 @@ func bearerToken(r *http.Request) (string, bool) {
 
 ---
 
+## 要不要拆成兩個 middleware
+
+直覺會想拆成 `Authenticate`（驗身分）+ `RequireAdmin`（查權限）。**不要拆。**
+
+拆開之後這行是合法的 Go 程式碼：
+
+```go
+mux.Handle("POST /api/posts", auth.Authenticate(handler))
+//                            ↑ 少掛了 RequireAdmin
+```
+
+編譯過、跑得動、測試可能也過——但全世界任何 Google 帳號都能發文。
+
+合成一個就不可能犯這個錯：**沒有「只驗身分不查權限」這個東西可以掛。**
+而拆開的前提是「存在只需登入、不需管理員權限的路由」，這個專案不會有。
+
+可讀性用函式切割解決，不是用 middleware 切割：
+
+```go
+raw, ok := bearerToken(r)                  // 可單獨測
+tok, err := a.client.VerifyIDToken(...)
+if err != nil {
+    a.writeVerifyError(w, err)             // 錯誤三分類抽出來
+    return
+}
+if !a.admins[tok.UID] { ... }
+```
+
+### 該分開的是橫切關注點
+
+```go
+Recover(next)      // panic → 500
+RequestLog(next)   // 方法、路徑、狀態碼、耗時
+CORS(next)         // 只在開發模式掛
+```
+
+差別在於**它們套用在所有路由上**，包含公開的文章頁，不是只有 `/api/*`。
+
+```go
+var chain http.Handler = mux
+chain = h.RequestLog(chain)
+chain = h.Recover(chain)        // 最外層——不然 log middleware 自己 panic 沒人接
+if cfg.Dev {
+    chain = h.CORS(chain)
+}
+```
+
+**CORS 只在開發模式掛。** 本機 Vite 在 5173、Go 在 8080，跨來源所以需要；
+正式環境兩者都在同一個網域底下（Firebase Hosting 同時服務 `/admin` 與轉給
+Cloud Run 的 `/api`），同源不需要。線上掛 CORS 是白白放寬瀏覽器本來會幫你擋的限制。
+
+---
+
 ## 錯誤要分三類
 
 | 情況 | 回應 | 為什麼 |

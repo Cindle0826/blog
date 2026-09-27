@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"cindle.dev/blog/internal/api"
+	"cindle.dev/blog/internal/auth"
 	"cindle.dev/blog/internal/util"
 )
 
@@ -21,8 +22,9 @@ func main() {
 	mux.HandleFunc("POST /api/posts", api.PingHandler)
 
 	// middleware
-	var handler http.Handler
-	handler = util.LoggerMiddleware(mux)
+	var handler http.Handler = mux
+	handler = auth.AuthMiddleware(handler)
+	handler = util.LoggerMiddleware(handler)
 
 	addr := ":" + util.GetEnvOr("PORT", "8080")
 	slog.Info("Server Running ...", "port", addr)

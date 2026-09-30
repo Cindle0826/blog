@@ -81,6 +81,18 @@ BLOG_DEV=1
 # 空的時候伺服器應該拒絕啟動，而不是退回「誰都可以」。
 ADMIN_UIDS=${ADMIN_UIDS}
 
+# ── Firebase ────────────────────────────────────────────
+# Admin SDK 不需要憑證檔，也不需要另一個 project 變數——
+# 它把上面的 GOOGLE_CLOUD_PROJECT 當 Firebase project ID（兩者本來就是
+# 同一個字串），憑證走 ADC。所以這一區只有一個變數，而且平常要留空。
+#
+# 設了它，Admin SDK 就改連本機模擬器，並且**完全跳過簽章驗證**
+# （auth/token_verifier.go:172 寫死的行為）——任何人隨手捏一個 JWT 都會通過。
+# 本機是功能，線上等於認證機制不存在。所以 internal/config 要擋一道：
+# 有值但 BLOG_DEV != 1 就拒絕啟動。
+#
+# FIREBASE_AUTH_EMULATOR_HOST=localhost:9099
+
 # 參考用，本機開發不需要：
 # CLOUD_RUN_URL=${RUN_URL}
 EOF

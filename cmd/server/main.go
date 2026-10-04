@@ -11,8 +11,10 @@ import (
 	"cindle.dev/blog/internal/auth"
 	"cindle.dev/blog/internal/config"
 	h "cindle.dev/blog/internal/handler"
-	firebase "firebase.google.com/go/v4"
+	"cindle.dev/blog/internal/store"
+	"firebase.google.com/go/v4"
 
+	"cloud.google.com/go/firestore"
 	fa "firebase.google.com/go/v4/auth"
 )
 
@@ -24,25 +26,41 @@ func main() {
 	// init config
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("配置啟動失敗", "errMsg", err.Error())
+		slog.Error("配置啟動失敗", "[main] errMsg", err.Error())
 		os.Exit(1)
 	}
 
+	ctx := context.Background()
+
 	// init firebase
-	client, err := initFirebase(context.Background(), cfg)
+	fbClient, err := initFirebase(ctx, cfg)
 	if err != nil {
-		slog.Error("初始化 Firebase 失敗", "errMsg", err.Error())
+		slog.Error("初始化 Firebase 失敗", "[main] errMsg", err.Error())
 		os.Exit(1)
 	}
+
+	// init firestore
+	fsClient, err := initFireStore(ctx, cfg)
+	if err != nil {
+		slog.Error("初始化 Firestore 失敗", "[main] errMsg", err.Error())
+		os.Exit(1)
+	}
+	defer func() {
+		_ = fsClient.Close()
+	}()
+
+	// init PostBlog handler
+	pbRepo := store.NewPostBlog(fsClient)
+	pbApi := h.NewPostBlogController(pbRepo)
 
 	// init api handler
 	api := http.NewServeMux()
-	api.HandleFunc("POST /posts", h.PingHandler)
+	api.HandleFunc("POST /posts", pbApi.CreatePost)
 
 	root := http.NewServeMux()
 
 	// init Auth middleware
-	authenticator := auth.NewAuthenticator(client, cfg.Firebase.AdminUIDs)
+	authenticator := auth.NewAuthenticator(fbClient, cfg.Firebase.AdminUIDs)
 	root.Handle("/api/", http.StripPrefix("/api", authenticator.RequireAdmin(api)))
 
 	// middleware
@@ -67,5 +85,15 @@ func initFirebase(ctx context.Context, cfg config.Config) (*fa.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("firebase auth client: %w", err)
 	}
+	return client, nil
+}
+
+func initFireStore(ctx context.Context, cfg config.Config) (*firestore.Client, error) {
+	client, err := firestore.NewClient(ctx, cfg.Firestore.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("firestore client: %w", err)
+	}
+	//defer client.Close()
+
 	return client, nil
 }

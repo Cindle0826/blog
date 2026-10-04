@@ -7,8 +7,9 @@ import (
 )
 
 type Config struct {
-	Server   Server
-	Firebase Firebase
+	Server    Server
+	Firebase  Firebase
+	Firestore Firestore
 
 	// BLOG_DEV=1。模板每次請求重讀、開 CORS，以及允許連 Auth 模擬器。
 	Dev bool
@@ -26,6 +27,10 @@ type Firebase struct {
 	AdminUIDs map[string]bool
 }
 
+type Firestore struct {
+	ProjectID string
+}
+
 // Load 讀環境變數。設定不完整就回 error，不要退回預設值——
 // 白名單沒設是部署疏失，而疏失的安全解讀是「不給存取」。
 func Load() (Config, error) {
@@ -34,8 +39,11 @@ func Load() (Config, error) {
 			Port: GetEnvOr("PORT", "8080"),
 		},
 		Firebase: Firebase{
-			// Cloud Run 會自己注入 GOOGLE_CLOUD_PROJECT，本機由 .env 提供。
+			// Cloud Run 不會自己注入 GOOGLE_CLOUD_PROJECT，透過 cloud_run.tf 設置。
 			// Firebase project ID 跟 GCP project ID 是同一個字串，不要另開變數。
+			ProjectID: GetEnvOr("GOOGLE_CLOUD_PROJECT", ""),
+		},
+		Firestore: Firestore{
 			ProjectID: GetEnvOr("GOOGLE_CLOUD_PROJECT", ""),
 		},
 		Dev: os.Getenv("BLOG_DEV") == "1",

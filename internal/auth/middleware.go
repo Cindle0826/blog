@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"strings"
 
-	"cindle.dev/blog/internal/handler"
+	"cindle.dev/blog/internal/httpx"
 	"firebase.google.com/go/v4/auth"
 )
 
 type Authenticator struct {
-	client *auth.Client
+	client tokenVerifier
 	admins map[string]bool
 }
 
@@ -28,7 +28,7 @@ type tokenVerifier interface {
 	VerifyIDToken(ctx context.Context, token string) (*auth.Token, error)
 }
 
-func NewAuthenticator(client *auth.Client, admins map[string]bool) *Authenticator {
+func NewAuthenticator(client tokenVerifier, admins map[string]bool) *Authenticator {
 	return &Authenticator{client: client, admins: admins}
 }
 
@@ -37,7 +37,7 @@ func (a *Authenticator) RequireAdmin(next http.Handler) http.Handler {
 		token, ok := resolveToken(r)
 
 		if !ok {
-			handler.WriteError(w, http.StatusUnauthorized, "unauthorized", "請重新登入")
+			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "請重新登入")
 			return
 		}
 
@@ -45,16 +45,16 @@ func (a *Authenticator) RequireAdmin(next http.Handler) http.Handler {
 		if err != nil {
 			switch {
 			case auth.IsIDTokenExpired(err):
-				handler.WriteError(w, http.StatusUnauthorized, "unauthorized", "登入已過期，請重新登入")
+				httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "登入已過期，請重新登入")
 			case auth.IsIDTokenInvalid(err):
-				handler.WriteError(w, http.StatusUnauthorized, "unauthorized", "登入憑證無效")
+				httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "登入憑證無效")
 			case auth.IsCertificateFetchFailed(err):
 				// 這個不是使用者的錯——是我們連不到 Google 拿公鑰
 				slog.Error("取得 Google 公鑰失敗", "errMsg", err.Error())
-				handler.WriteError(w, http.StatusInternalServerError, "internal", "服務暫時無法使用")
+				httpx.WriteError(w, http.StatusInternalServerError, "internal", "服務暫時無法使用")
 			default:
 				slog.Error("驗證失敗", "errMsg", err.Error())
-				handler.WriteError(w, http.StatusUnauthorized, "unauthorized", "登入憑證無效")
+				httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "登入憑證無效")
 			}
 			return
 		}
@@ -64,7 +64,7 @@ func (a *Authenticator) RequireAdmin(next http.Handler) http.Handler {
 				"UID", tok.UID,
 				"provider", tok.Firebase.SignInProvider,
 			)
-			handler.WriteError(w, http.StatusForbidden, "forbidden", "沒有權限")
+			httpx.WriteError(w, http.StatusForbidden, "forbidden", "沒有權限")
 			return
 		}
 

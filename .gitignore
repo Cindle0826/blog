@@ -1,5 +1,7 @@
 # Go
 /bin/
+# go build ./cmd/server 在根目錄產生的執行檔
+/server
 /tmp/
 *.test
 *.out

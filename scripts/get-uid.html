@@ -10,9 +10,18 @@
   這個頁面把瀏覽器的部分壓到最小：登入一次，把 UID 和 ID token 印出來，
   其餘的驗證你可以拿著 token 回 Postman 做。
 
-  用法：
-      cd ~/go-projects/blog && python3 -m http.server 8000
-      開 http://localhost:8000/scripts/get-uid.html
+  用法：GoLand 跑「Run get-uid.html」這個 Run Configuration（.run/ 裡），
+  它會啟動伺服器，等伺服器回應之後自動用預設瀏覽器打開這一頁；用完按停止。
+
+  手動的話：
+      cd ~/go-projects/blog && python3 -m http.server 8000 --bind 127.0.0.1 --directory scripts
+      開 http://localhost:8000/get-uid.html
+
+  兩個參數都不能省：
+    --bind 127.0.0.1    預設是綁所有網路介面，同一個 Wi-Fi 的人都連得進來
+    --directory scripts 預設是整個目前目錄。從 repo 根目錄啟動的話，.env 和
+                        http_tests/http-client.private.env.json（裡面有 ID token
+                        與 refresh token）都會被當成網頁提供出去
 
   必須用 http://localhost 開，不能用 file://——Firebase 的授權網域清單
   裡是 localhost，而 file:// 的 origin 是 null，會被擋下。

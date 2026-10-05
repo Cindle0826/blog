@@ -29,8 +29,9 @@
 # commit 進去對一人專案沒有任何便利，只是徒增 repo 公開時的暴露面。
 #
 # 開始之前先拿一個 ID token：
-#   1. cd ~/go-projects/blog && python3 -m http.server 8000
-#   2. 開 http://localhost:8000/scripts/get-uid.html，用 Google 登入
+#   1. GoLand 跑「Run get-uid.html」（會自動打開第 2 步的頁面），或：
+#      cd ~/go-projects/blog && python3 -m http.server 8000 --bind 127.0.0.1 --directory scripts
+#   2. 開 http://localhost:8000/get-uid.html，用 Google 登入
 #   3. 複製 ID token，貼進 http-client.private.env.json 的 idToken
 #
 # token 有效一小時。過期了跑「4. 換新的 ID token」那一則，或重拿一次。

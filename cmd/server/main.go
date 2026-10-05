@@ -56,6 +56,8 @@ func main() {
 	// init api handler
 	api := http.NewServeMux()
 	api.HandleFunc("POST /posts", pbApi.CreatePost)
+	api.HandleFunc("GET /posts/{id}", pbApi.GetPostByID)
+	api.HandleFunc("GET /posts", pbApi.GetPosts)
 
 	root := http.NewServeMux()
 

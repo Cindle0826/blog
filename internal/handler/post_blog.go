@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,8 +40,30 @@ type postResponse struct {
 	UpdatedAt   time.Time    `json:"updatedAt"`
 }
 
+type getItem struct {
+	ID          string     `json:"id"`
+	Slug        string     `json:"slug"`
+	Kind        string     `json:"kind"`
+	Status      string     `json:"status"`
+	Title       string     `json:"title"`
+	Summary     string     `json:"summary"`
+	TagSlugs    []string   `json:"tagSlugs"`
+	Pinned      bool       `json:"pinned"`
+	PublishedAt *time.Time `json:"publishedAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+}
+
+type getResponse struct {
+	Items      []getItem `json:"items"`
+	Page       int       `json:"page"`
+	TotalPages int       `json:"totalPages"`
+	Total      int       `json:"total"`
+}
+
 type PostBlogApi interface {
 	CreatePost(w http.ResponseWriter, r *http.Request)
+	GetPostByID(w http.ResponseWriter, r *http.Request)
+	GetPosts(w http.ResponseWriter, r *http.Request)
 }
 
 type PostBlogController struct {
@@ -85,7 +107,7 @@ func (p *PostBlogController) CreatePost(w http.ResponseWriter, r *http.Request) 
 	cp, err := p.repo.CreatePost(r.Context(), post)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "建立文章失敗，請查看詳細Log")
-		slog.Error("伺服器回應失敗", "[post_blog] errMsg", err.Error())
+		httpx.WriteErrLog("伺服器回應失敗", "CreatePost", "[post_blog] errMsg", err)
 		return
 	}
 
@@ -95,7 +117,104 @@ func (p *PostBlogController) CreatePost(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(pr); err != nil {
-		slog.Error("伺服器回應失敗", "[post_blog] errMsg", err.Error())
+		httpx.WriteErrLog("伺服器回應失敗", "CreatePost", "[post_blog] errMsg", err)
+		return
+	}
+}
+
+func (p *PostBlogController) GetPostByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	if len(id) == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id 必須填寫")
+		return
+	}
+
+	gp, err := p.repo.GetPost(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "not_found", "查無此文章")
+			return
+		}
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "獲取文章失敗詳情請查看 Log")
+		httpx.WriteErrLog("伺服器回應失敗", "GetPostByID", "[post_blog] errMsg", err)
+		return
+	}
+
+	// 轉換 response
+	pr := toPostResponse(gp)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(pr); err != nil {
+		httpx.WriteErrLog("伺服器回應失敗", "GetPostByID", "[post_blog] errMsg", err)
+		return
+	}
+}
+
+func (p *PostBlogController) GetPosts(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+
+	status := q.Get("status")
+	status = strings.TrimSpace(status)
+
+	if len(status) != 0 && status != "draft" && status != "published" && status != "all" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "status 狀態不存在")
+		return
+	}
+
+	if status == "all" {
+		status = ""
+	}
+
+	kind := q.Get("kind")
+	kind = strings.TrimSpace(kind)
+	if len(kind) != 0 && kind != "post" && kind != "note" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "kind 狀態不存在")
+		return
+	}
+
+	page, ok := parsePositive(q.Get("page"), 1)
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "page 參數有誤")
+		return
+	}
+
+	limit, ok := parsePositive(q.Get("limit"), 50)
+	limit = min(limit, 100)
+	if !ok {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "limit 參數有誤")
+		return
+	}
+
+	search := q.Get("search")
+	search = strings.TrimSpace(search)
+
+	posts, total, err := p.repo.ListPosts(r.Context(), kind, "", search, status, page, limit)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "查詢文章失敗，請查看詳細Log")
+		httpx.WriteErrLog("伺服器回應失敗", "GetPosts", "[post_blog] errMsg", err)
+		return
+	}
+
+	var ps = make([]getItem, 0)
+
+	for _, post := range posts {
+		pr := toGetItem(&post)
+		ps = append(ps, *pr)
+	}
+
+	var rs = getResponse{
+		Items:      ps,
+		Page:       page,
+		TotalPages: (total + limit - 1) / limit,
+		Total:      total,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(rs); err != nil {
+		httpx.WriteErrLog("伺服器回應失敗", "GetPosts", "[post_blog] errMsg", err)
 		return
 	}
 }
@@ -118,7 +237,8 @@ func handleError(err error, w http.ResponseWriter) {
 		httpx.WriteError(w, http.StatusRequestEntityTooLarge, "invalid_request", "資料傳遞過大")
 	default:
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "資料其他錯誤，請查看Log")
-		slog.Error("接收請求失敗", "[post_blog] errMsg", err.Error())
+		httpx.WriteErrLog("接收請求失敗", "handleError", "[post_blog] errMsg", err)
+
 	}
 }
 
@@ -139,8 +259,46 @@ func toPostResponse(p *store.Post) *postResponse {
 	}
 
 	if p.TagSlugs == nil {
-		p.TagSlugs = make([]string, 0)
+		pr.TagSlugs = make([]string, 0)
+	} else {
+		pr.TagSlugs = p.TagSlugs
 	}
 
 	return &pr
+}
+
+func toGetItem(p *store.Post) *getItem {
+	gi := getItem{
+		ID:          p.ID,
+		Slug:        p.Slug,
+		Kind:        p.Kind,
+		Status:      p.Status,
+		Title:       p.Title,
+		Summary:     p.Summary,
+		Pinned:      p.Pinned,
+		PublishedAt: p.PublishedAt,
+		UpdatedAt:   p.UpdatedAt,
+	}
+
+	if p.TagSlugs == nil {
+		gi.TagSlugs = make([]string, 0)
+	} else {
+		gi.TagSlugs = p.TagSlugs
+	}
+
+	return &gi
+}
+
+func parsePositive(s string, def int) (int, bool) {
+	s = strings.TrimSpace(s)
+	if len(s) == 0 {
+		return def, true
+	}
+
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 {
+		return 0, false
+	}
+
+	return n, true
 }

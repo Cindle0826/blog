@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -64,6 +65,7 @@ type Image struct {
 
 type PostsRepository interface {
 	GetPublishedBySlug(ctx context.Context, slug string) (*Post, error)
+	ListPosts(ctx context.Context, kind, tag, search, status string, page, perPage int) ([]Post, int, error)
 	ListPublished(ctx context.Context, kind, tag string, page, perPage int) ([]Post, error)
 	CountPublished(ctx context.Context, kind, tag string) (int, error)
 	CreatePost(ctx context.Context, post Post) (*Post, error)
@@ -152,23 +154,79 @@ func (p *PostBlogRepo) GetPublishedBySlug(ctx context.Context, slug string) (*Po
 	return &post, nil
 }
 
+// ListPosts 回傳後台列表的一頁文章，以及符合條件的總篇數。
+//
+// 分頁刻意在 Go 裡做，不用 Firestore 的 Offset / Limit，原因有兩個：
+//
+//  1. search 要比對標題的任何位置、而且不分大小寫，Firestore 沒有這種查詢，
+//     只能把文章讀回來在 Go 裡比對。搜尋又必須在切頁之前做，total 才會是
+//     「搜尋後還剩幾篇」，所以切頁也只能在 Go 裡做。
+//  2. Offset / Limit 要先排序才有意義；沒有 OrderBy 時，Firestore 是照
+//     document ID 的順序切，切出來的不是最新的那幾篇。而照 updatedAt 排序
+//     再加上 status、kind 過濾，每一種組合都需要一個複合索引。
+//
+// 第 2 點可以靠補索引解決，第 1 點不行：只要有搜尋，就只能在 Go 分頁。
+//
+// 所以 Firestore 只做 status、kind 的等值過濾（不需要複合索引），其餘依序
+// 在 Go 裡完成：search 過濾 → 照 updatedAt 新到舊排序 → 取 total → 切出這一頁。
+//
+// 代價是每次都會讀出所有符合 status、kind 的文章。後台只有一個使用者、文章
+// 在數百篇以內，遠低於每天 5 萬次的免費讀取額度；文章到數千篇時再考慮改用
+// 搜尋服務。
+//
+// 公開頁面用的 ListPublished 沒有搜尋、只照 publishedAt 排序，Terraform 也
+// 建好了對應的索引，所以那邊仍然在 Firestore 分頁。
+func (p *PostBlogRepo) ListPosts(ctx context.Context, kind, tag, search, status string, page, perPage int) ([]Post, int, error) {
+	q := p.baseQuery(status, kind, tag)
+
+	snaps, err := q.Documents(ctx).GetAll()
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var posts []Post
+
+	keyword := strings.ToLower(search)
+	for _, snap := range snaps {
+		var post Post
+		if err := snap.DataTo(&post); err != nil {
+			return nil, 0, err
+		}
+		if len(keyword) != 0 && !strings.Contains(strings.ToLower(post.Title), keyword) {
+			continue
+		}
+		post.ID = snap.Ref.ID
+		posts = append(posts, post)
+	}
+
+	slices.SortFunc(posts, func(a, b Post) int {
+		if c := b.UpdatedAt.Compare(a.UpdatedAt); c != 0 {
+			return c
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+
+	total := len(posts)
+
+	start := (page - 1) * perPage
+	if start >= total {
+		return []Post{}, total, nil
+	}
+	end := min(start+perPage, len(posts))
+
+	return posts[start:end], total, nil
+}
+
 func (p *PostBlogRepo) ListPublished(ctx context.Context, kind, tag string, page, perPage int) ([]Post, error) {
-
-	q := p.publishedQuery(kind, tag)
-
-	snaps, err := q.
+	snaps, err := p.publishedQuery(kind, tag).
 		OrderBy("publishedAt", firestore.Desc).
 		OrderBy(firestore.DocumentID, firestore.Desc).
 		Offset((page - 1) * perPage).
 		Limit(perPage).
 		Documents(ctx).GetAll()
 
-	if err != nil {
-		return nil, err
-	}
-
 	var posts []Post
-
 	for _, snap := range snaps {
 		var post Post
 		if err := snap.DataTo(&post); err != nil {
@@ -178,7 +236,7 @@ func (p *PostBlogRepo) ListPublished(ctx context.Context, kind, tag string, page
 		posts = append(posts, post)
 	}
 
-	return posts, nil
+	return posts, err
 }
 
 func (p *PostBlogRepo) CountPublished(ctx context.Context, kind, tag string) (int, error) {
@@ -197,8 +255,16 @@ func (p *PostBlogRepo) CountPublished(ctx context.Context, kind, tag string) (in
 }
 
 func (p *PostBlogRepo) publishedQuery(kind, tag string) firestore.Query {
-	q := p.client.Collection(Collections).
-		Where("status", "==", "published")
+	q := p.baseQuery("published", kind, tag)
+	return q
+}
+
+func (p *PostBlogRepo) baseQuery(status, kind, tag string) firestore.Query {
+	q := p.client.Collection(Collections).Query
+
+	if len(status) != 0 {
+		q = q.Where("status", "==", status)
+	}
 
 	if len(kind) != 0 {
 		q = q.Where("kind", "==", kind)

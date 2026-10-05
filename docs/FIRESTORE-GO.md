@@ -2,7 +2,7 @@
 
 對照 [`FIRESTORE.md`](FIRESTORE.md) 的資料結構，把每個會用到的操作寫成可以直接抄的形狀。
 
-> 這裡的每一段程式碼都**實際編譯過**（`cloud.google.com/go/firestore v1.26.0`），
+> 這裡的每一段程式碼都**實際編譯過**（`cloud.google.com/go/firestore v1.26.0`、Go 1.27.1，本專案 go.mod 用的版本），
 > 不是憑印象寫的。API 形狀可以信。
 
 ---
@@ -67,9 +67,11 @@ type Post struct {
 
     CreatedAt time.Time `firestore:"createdAt"`
 
-    // serverTimestamp：寫入時如果這個欄位是零值，就改用伺服器的時間。
+    // serverTimestamp：寫入時**一律**用伺服器的時間，struct 裡填什麼都會被忽略
+    // （SDK 的 to_value.go 看到這個 tag 就直接跳過該欄位）。所以寫入後你手上那份
+    // struct 的這個欄位仍是舊值，要拿到真正的時間得再讀一次。
     // 好處是不依賴本機時鐘，而且多台實例寫入時間軸一致。
-    // 注意它只在 Set / Add 生效；Update 要顯式傳 firestore.ServerTimestamp。
+    // 注意它只在 Set / Add / Create 生效；Update 要顯式傳 firestore.ServerTimestamp。
     UpdatedAt time.Time `firestore:"updatedAt,serverTimestamp"`
 }
 
@@ -175,16 +177,32 @@ snaps, err := c.Collection("posts").
 
 ### 分頁
 
+這個專案用**頁碼**：`Offset` 跳過前面幾頁，`Limit` 拿這一頁。
+
 ```go
     OrderBy("publishedAt", firestore.Desc).
-    StartAfter(lastPublishedAt).     // 傳「上一頁最後一筆」的排序欄位值
-    Limit(limit).
+    OrderBy(firestore.DocumentID, firestore.Desc).   // 同一時間發佈時，順序才固定
+    Offset((page - 1) * perPage).                     // 第 3 頁、每頁 10 篇 → 跳過 20 篇
+    Limit(perPage).
 ```
 
-`StartAfter` 的參數要跟 `OrderBy` 的欄位**一一對應、順序一致**。有兩個 OrderBy 就傳兩個值。
+第二個 `OrderBy` 不能省。只照 `publishedAt` 排的話，兩篇同一時間發佈的文章每次查詢的
+先後不保證一樣，換頁時可能一篇出現兩次、另一篇消失。方向要跟前一個 `OrderBy` 一致——
+複合索引最後本來就隱含一個同方向的 document ID，所以 Terraform 建好的索引可以直接用。
 
-> 不要用 `Offset()`。Firestore 的 offset 是「撈出來再丟掉」，被跳過的文件**一樣計費**。
-> 第 10 頁的成本會是第 1 頁的 10 倍。游標分頁沒有這個問題。
+總頁數要另外查總筆數，用下面「聚合查詢」那一節的 `WithCount`，數 100 篇只算 1 次讀取：
+
+```go
+totalPages := (total + perPage - 1) / perPage   // 無條件進位；total 為 0 時結果是 0
+```
+
+> **`Offset` 的代價**：被跳過的文件一樣會讀、一樣計費，第 N 頁要讀 N × perPage 筆。
+> 這個 blog 文章數百篇以內，最後一頁也只讀幾百筆，公開頁面前面還有 CDN 快取，
+> 這個代價可以忽略，換來的是可以直接跳到任何一頁。
+>
+> 資料量到幾萬筆以上、或是要做「往下滑自動載入更多」時，改用**游標分頁**：
+> `StartAfter(上一頁最後一筆的 publishedAt, ID)` 直接從那個位置接著拿，前面的文件完全不讀。
+> 代價是只能往下翻，不能跳頁，也不知道總共幾頁。
 
 ---
 
@@ -294,7 +312,7 @@ n, _ := res.Data()["n"].(int64)
 ```
 
 它**不會把文件撈回來**，只回一個數字。計費是按掃過的索引項目算（每 1000 筆算一次讀取），
-所以數 100 篇文章只花 1 次讀取，而不是 100 次。
+所以數 100 篇文章只花 1 次讀取，而不是 100 次。分頁的總頁數也是用它算。
 
 | | 交易維護 count | 聚合查詢 |
 |---|---|---|
@@ -382,5 +400,6 @@ if os.Getenv("FIRESTORE_EMULATOR_HOST") != "" && os.Getenv("BLOG_DEV") != "1" {
 | 查詢回錯誤，訊息裡有個 Console 連結 | 缺複合索引——寫進 `firestore.tf` 再 apply |
 | 交易偶爾莫名其妙失敗 | 讀寫順序反了，或交易函式裡有副作用 |
 | `PATCH` 之後其他欄位不見了 | 用了 `Set` 而不是 `Update` |
-| 分頁越後面越慢越貴 | 用了 `Offset`，改用 `StartAfter` |
+| 同一篇文章在相鄰兩頁都出現 | 少了 `OrderBy(firestore.DocumentID, ...)` 當第二排序鍵 |
+| 分頁越後面越慢越貴 | `Offset` 的正常代價，這個規模可以忽略；資料量真的很大時改用 `StartAfter` |
 | 本機正常、線上 permission denied | Cloud Run 的 `blog-server` 只有 `roles/datastore.user`，不能改索引或資料庫本身 |

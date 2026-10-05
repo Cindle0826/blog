@@ -1,6 +1,6 @@
 # 開發計畫
 
-最後更新：2026-09-22
+最後更新：2026-10-04
 
 ## 決策紀錄
 
@@ -41,9 +41,9 @@
 - [x] 0.4　`./scripts/01-state-bucket.sh` — 建 state bucket
 - [x] 0.5　`./scripts/02-apply.sh --apply` — 25 個資源建立完成（2026-09-22）
       Cloud Run：`https://blog-3e5cnz7acq-de.a.run.app`（目前是佔位 image）
-- [ ] 0.6　`./scripts/03-local-dev-auth.sh` — 本機 ADC
+- [x] 0.6　`./scripts/03-local-dev-auth.sh` — 本機 ADC（本機已實際讀寫 Firestore）
 - [x] 0.7　Console 開啟 Firebase Auth 的 Google 登入
-- [x] 0.7b　設定 `admin_uids`（`KyYz0RfQ...xV32`，provider `google.com`）
+- [x] 0.7b　設定 `admin_uids`（`RW2Cpmkv...XgT2`，provider `google.com`）
 - [ ] 0.8　`npm i -g firebase-tools` 然後 `firebase login`
 - [ ] 0.9　註冊 `cindle.dev` 並指向 Firebase Hosting
 - [x] 0.10　建立 repo、`go mod init`、`.gitignore`
@@ -56,7 +56,7 @@
 - [x] 1.2　`internal/view/model.go`
 - [x] 1.3　`docs/API.md`
 - [x] 1.4　路由表（見下）
-- [ ] 1.5　**cindle review 上面三份**，確認實作得出來　← 開工前唯一剩下的關卡
+- [x] 1.5　**cindle review 上面三份**，確認實作得出來
   - [x] 契約① `internal/view/model.go`
   - [x] 契約② `docs/API.md`
   - [x] 契約③ `docs/FIRESTORE.md`
@@ -116,12 +116,16 @@
 > Firestore 的 Go 寫法對照見 [`FIRESTORE-GO.md`](FIRESTORE-GO.md)。
 
 - [ ] 2A.1　`internal/config` — 從環境變數組出 `view.Site`
-- [ ] 2A.2　`internal/store` — Firestore client 與 CRUD
+      已讀 `GOOGLE_CLOUD_PROJECT`、`ADMIN_UIDS`、`BLOG_DEV` 與模擬器防呆；
+      還沒讀 `BLOG_BASE_URL`、`BLOG_UPLOADS_BUCKET`，也還沒組 `view.Site`
+- [ ] 2A.2　`internal/store` — Firestore client 與 CRUD（進度見 4.3 的表）
 - [ ] 2A.3　`internal/markdown` — goldmark + chroma + bluemonday，產出 `html`/`toc`/`readingMin`
+      目前 `CreatePost` 存進去的 `html` 是空的，公開頁面要等這一項
 - [ ] 2A.4　slug 產生與唯一性檢查
+      產生已完成（`makeSlug` + 單元測試）；唯一性檢查（撞號加 `-2`、回 409）還沒做
 - [ ] 2A.5　`internal/handler/public.go` — 填 `view.*VM`
 - [ ] 2A.6　`internal/cache` — 記憶體快取 + `Cache-Control`
-- [ ] 2A.7　`cmd/server/main.go` — 本機跑得起來
+- [x] 2A.7　`cmd/server/main.go` — 本機跑得起來
 
 ## Phase 2B — 視覺原型　`Claude`
 
@@ -143,46 +147,59 @@
 
 ## Phase 4 — 登入與後台
 
-- [ ] 4.1　Firebase Auth Google 登入設定　`cindle`
-- [ ] 4.2　ID token 驗證 middleware + UID 白名單　`cindle`（寫法見 [`AUTH-GO.md`](AUTH-GO.md)）
-- [ ] 4.3　`/api/*` 實作　`cindle`
+- [x] 4.1　Firebase Auth Google 登入設定　`cindle`
+- [x] 4.2　ID token 驗證 middleware + UID 白名單　`cindle`（寫法見 [`AUTH-GO.md`](AUTH-GO.md)）
+      401 / 403 / 200 三條路徑已用真的 Firebase token 實測（2026-09-28）
+- [ ] 4.3　`/api/*` 實作　`cindle`（進度見下表）
 - [ ] 4.4　圖片上傳與縮圖　`cindle`
 - [ ] 4.4b　`GET /images/*` 從私有 GCS bucket 串流　`cindle`（規格見 API.md）
-- [ ] 4.5　React 後台骨架（Vite + TS）　`Claude`
+- [x] 4.5　React 後台骨架（Vite + TS）　`Claude`　見 [`web/admin/`](../web/admin/)
 - [ ] 4.6　登入流程與 token 附加　`Claude`
-
-### 管理帳號（已完成）
-
-| | |
-|---|---|
-| UID | `KyYz0RfQ6fMXtmC2y2vLaC81xV32` |
-| email | `cindle0826@gmail.com` |
-| provider | `google.com` |
-
-取得過程留下一個有用的實測結果：這個帳號最早是在 Console 以
-**password** 方式建立的（當時為了提早拿到 UID）。第一次用 Google 登入時，
-Firebase **把 provider 直接換成 `google.com` 並保留原本的 UID**——Google
-提供的是已驗證的 email，會取代未驗證的密碼憑證。那組密碼現在已經不存在。
-
-所以原本擔心的「UID 會不會變」不會發生，也不需要先刪帳號再重建。
-
-- [x] UID 已填入 `terraform.tfvars`、Cloud Run、本機 `.env`（三處已驗證一致）
-- [ ] **停用 Email/Password 登入方式**（見下）
-
-#### 為什麼還是要停用 Email/Password
-
-已經沒有任何帳號帶著密碼憑證，所以沒有人能用密碼登入。但只要這個登入方式
-是啟用的，**任何人都能拿公開的 `apiKey` 呼叫 `accounts:signUp` 自行註冊**。
-
-註冊出來的帳號不在 `admin_uids` 裡，動不了 `/api/*`，所以不是權限漏洞。
-但它讓陌生人可以在你的專案裡累積帳號——是噪音，也是被濫用的入口。
-
-停用位置：Firebase Console → Authentication → 登入方式 → Email/Password。
-停用之後現有帳號與 UID 都不受影響（它的 provider 是 `google.com`）。
-- [ ] 4.7　文章 CRUD 介面　`Claude`
+      程式碼完成；等 cindle 用真的 Google 帳號登入一次確認
+- [x] 4.7　文章 CRUD 介面　`Claude`　列表 / 新增 / 編輯 / 發布 / 刪除 / 標籤改名，
+      已用假資料模式走過完整流程；真的資料要等對應的 API 寫完
 - [ ] 4.8　CodeMirror 6 分割即時預覽　`Claude`
 - [ ] 4.9　自動存草稿、圖片拖放　`Claude`
 - [ ] 4.10　後台 build 產物接到 Hosting `/admin`　`Claude`
+
+### 4.3 後台 API 進度
+
+對應 [`API.md`](API.md) 與 [`api_test.http`](../http_tests/api_test.http) 的測試編號。
+
+| 端點 | store | handler | 測試 | 備註 |
+|---|---|---|---|---|
+| `POST /api/posts` | ✅ | ✅ | 3、11 | 撞號回 409（測試 10）要等 2A.4 |
+| `GET /api/posts/{id}` | ✅ `GetPost` | ⬜ | 4、9 | 最小的一支，只差 handler |
+| `GET /api/posts` | ⬜ | ⬜ | 5、5b、5c | 後台版：不過濾 status，要支援 `search`、`page`、`limit` |
+| `DELETE /api/posts/{id}` | ⬜ | ⬜ | 18、19 | 做完才能清掉測試文章 |
+| `POST /api/posts/{id}/publish` | ⬜ | ⬜ | 7、8 | 退回草稿時 `publishedAt` 不能清掉 |
+| `PATCH /api/posts/{id}` | ⬜ | ⬜ | 6 | 最大的一支：重算 html/toc、tags.count、slug 改名寫 redirects、`updatedAt` 要顯式送 `ServerTimestamp` |
+| `GET /api/tags` | ⬜ | ⬜ | 12 | |
+| `PUT /api/tags/{slug}` | ⬜ | ⬜ | 13 | |
+| `POST /api/uploads` | ⬜ | ⬜ | 14 | 4.4，需要 GCS 與縮圖 |
+| `GET /images/{path...}` | ⬜ | ⬜ | 15、16 | 4.4b，公開路由，不經過 `RequireAdmin` |
+| `POST /api/cache/purge` | — | ⬜ | 17 | 依賴 2A.6 `internal/cache` |
+
+> 寫 PATCH / DELETE 之前要先決定 `tags.count` 的做法：交易維護，或改用聚合查詢即時算
+> （[`FIRESTORE-GO.md`](FIRESTORE-GO.md)「一個可能讓你不用維護 count 的選項」）。
+> 選聚合查詢的話，PATCH 和 DELETE 都不用處理 count，會簡單很多。
+
+### 管理帳號
+
+| | |
+|---|---|
+| UID | `RW2CpmkvuOWdTBMlbBnyco46XgT2` |
+| email | `cindle0826@gmail.com` |
+| provider | `google.com` |
+
+- [x] UID 已填入 `terraform.tfvars`、Cloud Run、本機 `.env`（三處一致，`terraform plan` 無差異）
+- [x] Email/Password 登入方式已停用（2026-10-04 查 Identity Toolkit 設定確認）
+- 專案裡另有一個非白名單的 Google 帳號，是用來實測 403 的
+
+最早的管理帳號（`KyYz0RfQ...`）是在 Console 以 password 方式建立的，
+後來刪除，改成直接用 Google 登入建立現在這個帳號。過程中確認了一件事：
+用 Google 登入同 email 的 password 帳號時，Firebase 會把 provider 換成
+`google.com` 並保留原本的 UID。
 
 ## Phase 5 — SEO 全套
 
@@ -206,6 +223,9 @@ Firebase **把 provider 直接換成 `google.com` 並保留原本的 UID**——
       （Authentication → 設定 → 授權網域）。漏了的話正式站的登入會被擋。
       這跟 OAuth 用戶端的 redirect URI 是兩回事——後者永遠是
       `cindle-blog.firebaseapp.com/__/auth/handler`，不需要也不應該去改。
+- [ ] 6.4c　替 Firebase 的 Browser API key 加 HTTP referrer 限制
+      （目前只有 API 限制，沒有網域限制）。要包含 `localhost`、
+      `cindle-blog.firebaseapp.com` 與正式網域
 - [ ] 6.5　驗證 CDN 真的有命中
 - [ ] 6.6　Search Console 驗證與提交 sitemap
 - [ ] 6.7　一週後確認帳單為 $0
@@ -218,12 +238,16 @@ Firebase **把 provider 直接換成 `google.com` 並保留原本的 UID**——
 
 ## 目前狀態
 
-Phase 1 完成（三份契約待 cindle review）。Phase 2B 完成，風格與字型已確認。
+Phase 0、1、2B 完成。Phase 4 的登入與 middleware 完成，`POST /api/posts` 已經可以
+實際寫入 Firestore。分頁採頁碼（`Offset` + `Limit` + 聚合查詢算總數）。
 
-下一步：cindle 做 Phase 0（GCP 環境）與 1.5（review 契約）；
-Claude 等契約確認後開始 Phase 4 的 React 後台。
+下一步：cindle 依 4.3 的表繼續寫後台 API，建議順序是
+`GET /api/posts/{id}` → `GET /api/posts` → `DELETE` → `publish` → slug 唯一性 → `PATCH`
+→ 標籤 → 上傳與圖片 → 快取失效。後台 React（4.5–4.7）已完成，每寫完一支 API，後台對應的畫面就能直接用。
 
-預覽站：
+注意：Cloud Run 目前跑的還是佔位的 `hello` image，blog server 要到 Phase 6 才部署。
+
+預覽站（公開站，假資料）：
 
 ```bash
 BLOG_DEV=1 go run ./cmd/preview
@@ -231,3 +255,13 @@ BLOG_DEV=1 go run ./cmd/preview
 
 `BLOG_DEV=1` 會讓模板每次請求重新讀取，改完存檔重新整理就看得到，不用重啟。
 右下角的工具列可以切換字型方案（A/B/C/D）與明暗主題。
+
+後台（`http://localhost:5173/admin/`）：
+
+```bash
+cd web/admin && npm install          # 第一次
+npm run dev                          # 真的 Firebase 登入，/api 轉給 :8080 的 Go server
+npm run dev:mock                     # 不登入、不打 API，用假資料看畫面
+```
+
+`dev` 需要 Go server 同時在 :8080 跑；Vite 會把 `/api` 轉過去，所以後端不用處理 CORS。

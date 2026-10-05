@@ -216,7 +216,11 @@ if cfg.Dev {
 }
 ```
 
-**CORS 只在開發模式掛。** 本機 Vite 在 5173、Go 在 8080，跨來源所以需要；
+**更新（2026-10-04）：這個專案不需要 CORS。** 後台的 Vite dev server 會把 `/api`
+轉給 Go server，本機開發也是同源，所以上面的 `CORS(chain)` 那段可以整個拿掉。
+以下是原本的說明，留著當作「為什麼線上不要掛 CORS」的理由。
+
+~~CORS 只在開發模式掛。~~ 本機 Vite 在 5173、Go 在 8080，跨來源所以需要；
 正式環境兩者都在同一個網域底下（Firebase Hosting 同時服務 `/admin` 與轉給
 Cloud Run 的 `/api`），同源不需要。線上掛 CORS 是白白放寬瀏覽器本來會幫你擋的限制。
 
@@ -319,10 +323,10 @@ tok, err := client.VerifyIDTokenAndCheckRevoked(ctx, raw)
 | 1 | 不帶 token → 401，且錯誤格式符合契約 |
 | 2 | 非白名單 token → 403，且 code 是 `forbidden` 不是 `unauthorized` |
 
-第 2 則需要 `otherUserIdToken`。用 Auth 模擬器建第二個帳號取得，做法見
-[`LOCAL-AUTH.md`](LOCAL-AUTH.md)。
+第 2 則需要 `otherUserIdToken`：一個**簽章有效、但 UID 不在白名單**的 token。
+實際做法是用另一個 Google 帳號在 `scripts/get-uid.html` 登入，把拿到的 ID token
+貼進 `http-client.private.env.json`（2026-09-28 已用這個方式實測通過）。
 
-> 但注意：模擬器的 token 只有在你也設了 `FIREBASE_AUTH_EMULATOR_HOST` 時才驗得過。
-> 要用**真的** Firebase token 測 403 的話，得另外拿一個非白名單帳號的 token——
-> 最簡單的方法是暫時把自己的 UID 從本機 `.env` 的 `ADMIN_UIDS` 拿掉，
+> 沒有第二個帳號的話，也可以暫時把自己的 UID 從本機 `.env` 的 `ADMIN_UIDS` 拿掉，
 > 用同一個 token 打一次，應該從 200 變成 403。測完記得改回來。
+> 模擬器的 token 只有在你也設了 `FIREBASE_AUTH_EMULATOR_HOST` 時才驗得過。

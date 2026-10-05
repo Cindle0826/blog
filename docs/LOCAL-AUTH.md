@@ -195,7 +195,6 @@ if os.Getenv("FIREBASE_AUTH_EMULATOR_HOST") != "" && os.Getenv("BLOG_DEV") != "1
 - Google 登入本身能不能跑通
 - 你的真實 UID 是多少
 
-這兩件都會在 **Phase 4.6** 的後台登入頁完成。那時候拿到的 UID 才是要填進
-`terraform.tfvars` 的 `admin_uids` 的值。
-
-在那之前，模擬器足以開發並測試所有 `/api/*` 的邏輯。
+這兩件都已經完成：用 `scripts/get-uid.html` 以 Google 登入拿到真的 UID，
+並填進了 `terraform.tfvars` 的 `admin_uids`（見 [PLAN.md](PLAN.md) 的「管理帳號」）。
+之後 Phase 4.6 的後台登入頁會走同一個流程。

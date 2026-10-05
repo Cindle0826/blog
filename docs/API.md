@@ -4,7 +4,7 @@
 > 前端會完全照這份寫，所以你實作時**回應格式要一字不差**。
 >
 > **這份契約有可執行版本：[`../http_tests/api_test.http`](../http_tests/api_test.http)**
-> （43 個測試 / 62 條斷言）。實作一個 handler 就跑一次，它會直接告訴你形狀對不對。
+> （47 個測試 / 70 條斷言）。實作一個 handler 就跑一次，它會直接告訴你形狀對不對。
 
 - Base path：`/api`
 - 格式：JSON（`Content-Type: application/json`）
@@ -61,11 +61,17 @@ Authorization: Bearer <firebase-id-token>
 
 | 參數 | 型別 | 預設 | 說明 |
 |---|---|---|---|
-| `status` | `draft\|published\|all` | `all` | |
-| `kind` | `post\|note\|all` | `all` | |
-| `q` | string | — | 標題模糊比對 |
-| `limit` | int | 50 | 上限 100 |
-| `cursor` | string | — | 上一頁回傳的 `nextCursor` |
+| `status` | `draft\|published\|all` | `all` | 其他值 → `400 invalid_request` |
+| `kind` | `post\|note\|all` | `all` | 其他值 → `400 invalid_request` |
+| `search` | string | — | 搜尋標題，見下方說明 |
+| `page` | int | 1 | 從 1 開始 |
+| `limit` | int | 50 | 每頁幾筆。超過 100 一律當成 100，不報錯 |
+
+所有參數都是選填。前端在值等於預設時**不會送**（例如 `status=all`、`page=1`），
+所以後端收到空字串要當成預設值。
+
+`search` 的比對規則：前後空白先去掉，去掉後是空的就當沒帶；不分大小寫，
+標題裡任何位置出現都算（`Cloud` 會找到「把 Cloud Run 冷啟動…」）。
 
 回應：
 
@@ -85,9 +91,21 @@ Authorization: Bearer <firebase-id-token>
       "updatedAt":   "2026-09-20T09:10:00Z"
     }
   ],
-  "nextCursor": "eyJ..."   // 沒有下一頁時為 null
+  "page":       1,     // 目前頁碼，跟請求的 page 相同
+  "totalPages": 3,     // 沒有任何符合的文章時為 0
+  "total":      127    // 符合條件的總筆數（套用 status / kind / search 之後）
 }
 ```
+
+- `page` 超出範圍（只有 3 頁卻要第 5 頁）→ `200`，`items` 是**空陣列 `[]`**，不是 404，
+  也不是 `null`。「這頁沒東西」是正常結果。
+- `page` 或 `limit` 不是正整數 → `400 invalid_request`
+- 有 `search` 時：Firestore 沒有子字串查詢，後端要先撈出符合 `status`、`kind` 的**全部**文章，
+  在 Go 裡過濾標題，**過濾完再切頁**。`total` 以過濾後的數量為準。
+  先切頁再過濾的話，每頁筆數會忽多忽少，`total` 也會是錯的。
+
+> 用頁碼而不是游標：只有一個使用者、文章數百篇以內，`Offset` 多讀的那些文件可以忽略，
+> 換來的是可以直接跳頁。取捨見 [`FIRESTORE-GO.md`](FIRESTORE-GO.md) 的「分頁」。
 
 > 列表**不回傳** `markdown` 與 `html`。50 篇文章的全文會讓回應變成好幾 MB。
 
@@ -322,6 +340,7 @@ func (h *Handler) Image(w http.ResponseWriter, r *http.Request) {
 1. **所有時間都是 UTC 的 RFC3339 字串**，不要回 Unix timestamp，也不要回本地時間
 2. **`null` 和「欄位不存在」意義不同**——`publishedAt: null` 表示草稿，欄位缺漏表示 bug
 3. **`PATCH` 一定要回傳更新後的完整物件**，前端才不用再發一次 GET
-4. **CORS**：正式環境同源不需要處理；本機開發時前端跑在 `localhost:5173`，
-   要允許該來源並且 `Access-Control-Allow-Credentials: true`
+4. **不需要 CORS**：正式環境後台與 API 同網域；本機開發時 Vite（`:5173`）
+   會把 `/api` 與 `/images` 轉給 Go server（`:8080`），瀏覽器看到的也是同源。
+   （2026-10-04 修改：原本要求本機開 CORS，改用 Vite proxy 後拿掉）
 5. **錯誤一律用上面的統一格式**，前端有一個共用的錯誤處理函式會解析它

@@ -27,7 +27,7 @@ cd infrastruct_as_code
 | `apis.tf` | 10 個 API |
 | `firestore.tf` | database（Native、asia-east1）＋ 4 個複合索引 |
 | `artifact_registry.tf` | Docker repo ＋ 清理規則 |
-| `storage.tf` | 圖片上傳 bucket（公開讀取）＋ CORS ＋ 版本保留 |
+| `storage.tf` | 圖片上傳 bucket（私有，經 `GET /images/*` 讀取）＋ 版本保留 |
 | `iam.tf` | Cloud Run 的執行身分與最小權限 |
 | `cloud_run.tf` | `blog` 服務（scale-to-zero、上限 3 個實例） |
 | `budget.tf` | NT$1 預算警示 |

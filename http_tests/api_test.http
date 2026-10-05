@@ -1,4 +1,4 @@
-### 契約② 的可執行版本
+## 契約② 的可執行版本
 #
 # docs/API.md 每個端點對應一則請求，帶斷言。你實作一個 handler 就跑一次，
 # 它會直接告訴你回傳的形狀跟契約對不對——不用等前端接上去才發現不一致。
@@ -7,7 +7,7 @@
 #
 # 1. 右上角環境選 local（或 cloudrun）
 # 2. 確認 http-client.private.env.json 裡有 idToken
-#    （沒有的話：python3 -m http.server 8000，開 scripts/get-uid.html）
+#    （沒有的話：GoLand 跑「Run get-uid.html」，會自動打開瀏覽器）
 # 3. 從上往下跑。第 3 則會建立一篇測試文章，後面的請求靠它串起來，
 #    最後一則會刪掉。中途失敗的話重跑一次第 3 則就好。
 #
@@ -19,7 +19,6 @@
 # 你的靶子，實作到哪就有幾則變綠。
 
 
-### ═══════════════════════════════════════════════════════════
 ### 1. 認證：不帶 token → 401
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -75,7 +74,6 @@ Authorization: Bearer {{otherUserIdToken}}
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 3. 建立文章 → 201，且一律是 draft
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -123,7 +121,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 4. 取單篇 → 有 markdown，沒有 html
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -155,11 +152,11 @@ Authorization: Bearer {{idToken}}
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 5. 列表 → 不含全文
 ### ═══════════════════════════════════════════════════════════
 # @no-log
-GET {{apiBase}}/api/posts?status=all&limit=10
+# @timeout 300s
+GET {{apiBase}}/api/posts?status=all&page=1&limit=10
 Authorization: Bearer {{idToken}}
 
 > {%
@@ -167,11 +164,16 @@ Authorization: Bearer {{idToken}}
         client.assert(response.status === 200, "得到 " + response.status);
     });
 
-    client.test("外層是 items + nextCursor", function() {
-        client.assert(Array.isArray(response.body.items), "items 必須是陣列");
-        client.assert("nextCursor" in response.body,
-            "nextCursor 一定要有這個 key，沒有下一頁時值為 null——" +
-            "前端靠它判斷還能不能往下翻");
+    client.test("外層是 items + page + totalPages + total", function() {
+        const b = response.body;
+        client.assert(Array.isArray(b.items), "items 必須是陣列");
+        client.assert(b.page === 1, "page 應該是 1，得到 " + b.page);
+        client.assert(typeof b.totalPages === "number",
+            "totalPages 必須是數字——前端靠它畫頁碼列");
+        client.assert(typeof b.total === "number", "total 必須是數字");
+        client.assert(b.total >= b.items.length,
+            "total（" + b.total + "）比這頁的筆數（" + b.items.length + "）還少。" +
+            "可能是先切頁才過濾 search，或是 total 用了不同的查詢條件");
     });
 
     client.test("列表不夾帶 markdown / html", function() {
@@ -186,6 +188,49 @@ Authorization: Bearer {{idToken}}
         const id = client.global.get("postId");
         client.assert(response.body.items.some(function(p) { return p.id === id; }),
             "找不到剛建立的 " + id);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 5b. 超出範圍的頁碼 → 200 + 空陣列，不是 404
+### ═══════════════════════════════════════════════════════════
+# @no-log
+GET {{apiBase}}/api/posts?status=all&page=9999&limit=10
+Authorization: Bearer {{idToken}}
+
+> {%
+    client.test("回 200", function() {
+        client.assert(response.status === 200,
+            "得到 " + response.status + "。「這頁沒東西」是正常結果，不是錯誤");
+    });
+
+    client.test("items 是空陣列，不是 null", function() {
+        client.assert(Array.isArray(response.body.items),
+            "items 是 " + JSON.stringify(response.body.items) + "。" +
+            "Go 的 nil slice（var posts []Post）會被編成 null，前端 .map() 會直接炸掉");
+        client.assert(response.body.items.length === 0,
+            "第 9999 頁不該有東西，得到 " + response.body.items.length + " 筆");
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 5c. 頁碼不合法 → 400
+### ═══════════════════════════════════════════════════════════
+# @no-log
+GET {{apiBase}}/api/posts?page=0
+Authorization: Bearer {{idToken}}
+
+> {%
+    client.test("回 400", function() {
+        client.assert(response.status === 400,
+            "得到 " + response.status + "。page 從 1 開始，0 或負數是使用者送錯，不是伺服器出事");
+    });
+
+    client.test("code 是 invalid_request", function() {
+        const code = (response.body.error || {}).code;
+        client.assert(code === "invalid_request", "得到 " + code);
     });
 %}
 

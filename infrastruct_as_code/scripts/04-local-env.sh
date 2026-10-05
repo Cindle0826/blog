@@ -38,7 +38,7 @@ tf() { terraform output -raw "$1" 2>/dev/null || true; }
 
 BUCKET="$(tf uploads_bucket)"
 RUN_URL="$(tf cloud_run_url)"
-FB_API_KEY="$(tf firebase_api_key)"
+FB_BROWSER_KEY="$(tf firebase_api_key)"
 FB_AUTH_DOMAIN="$(tf firebase_auth_domain)"
 FB_APP_ID="$(tf firebase_app_id)"
 
@@ -81,6 +81,14 @@ BLOG_DEV=1
 # 空的時候伺服器應該拒絕啟動，而不是退回「誰都可以」。
 ADMIN_UIDS=${ADMIN_UIDS}
 
+# ── GCP 呼叫的帳務歸屬 ──────────────────────────────────
+# 本機用個人帳號的 ADC 呼叫 Google API 時，用量要記在某個專案的帳上。
+# 預設取 ADC 檔案（~/.config/gcloud/）裡的 quota_project_id，但那個檔案整台
+# 電腦共用——你為別的專案重跑過 gcloud auth application-default login 就會被蓋掉。
+# 在這裡指定，只對這個專案生效，不用動全域設定。
+# Cloud Run 上不需要：服務帳號本身就屬於專案。
+GOOGLE_CLOUD_QUOTA_PROJECT=${PROJECT_ID}
+
 # ── Firebase ────────────────────────────────────────────
 # Admin SDK 不需要憑證檔，也不需要另一個 project 變數——
 # 它把上面的 GOOGLE_CLOUD_PROJECT 當 Firebase project ID（兩者本來就是
@@ -112,20 +120,23 @@ cat > "$REPO_ROOT/web/admin/.env.local" <<EOF
 #
 # 絕對不要把任何真正的機密加上 VITE_ 前綴。
 
-VITE_FIREBASE_API_KEY=${FB_API_KEY}
+# Firebase 設定裡叫 apiKey，但它不是密碼——是專案識別碼，任何人打開後台
+# 都看得到。GCP Console 裡它叫「Browser key」，所以這裡用同一個名字。
+VITE_FIREBASE_BROWSER_KEY=${FB_BROWSER_KEY}
 VITE_FIREBASE_AUTH_DOMAIN=${FB_AUTH_DOMAIN}
 VITE_FIREBASE_PROJECT_ID=${PROJECT_ID}
 VITE_FIREBASE_APP_ID=${FB_APP_ID}
 
-# 後台 API 的位置。本機開發時 Vite 跑在 5173，Go 跑在 8080。
-VITE_API_BASE=http://localhost:8080
+# 沒有 API 位址的設定：前端一律打相對路徑 /api。本機由 Vite 的 proxy 轉給
+# :8080 的 Go server（見 web/admin/vite.config.ts），正式環境同網域，
+# 兩邊對瀏覽器來說都是同源，後端不需要處理 CORS。
 EOF
 ok "$REPO_ROOT/web/admin/.env.local"
 
 step "產生 http_tests/http-client.private.env.json"
 # 保留既有的 token——那些是手動從 get-uid.html 貼進來的，
 # 每次重跑腳本都清掉的話會很煩。這裡只更新從 Terraform 來的值。
-python3 - "$REPO_ROOT" "$FB_API_KEY" <<'PYEOF'
+python3 - "$REPO_ROOT" "$FB_BROWSER_KEY" <<'PYEOF'
 import json, pathlib, sys
 
 root, api_key = sys.argv[1], sys.argv[2]
@@ -160,7 +171,7 @@ step "產生 scripts/get-uid.config.js"
 cat > "$REPO_ROOT/scripts/get-uid.config.js" <<EOF
 // 由 infrastruct_as_code/scripts/04-local-env.sh 產生，不進版控。
 window.FIREBASE_CONFIG = {
-  apiKey:     "${FB_API_KEY}",
+  apiKey:     "${FB_BROWSER_KEY}",
   authDomain: "${FB_AUTH_DOMAIN}",
   projectId:  "${PROJECT_ID}",
   appId:      "${FB_APP_ID}",

@@ -69,7 +69,8 @@ type PostsRepository interface {
 	ListPublished(ctx context.Context, kind, tag string, page, perPage int) ([]Post, error)
 	CountPublished(ctx context.Context, kind, tag string) (int, error)
 	CreatePost(ctx context.Context, post Post) (*Post, error)
-	GetPost(ctx context.Context, id string) (*Post, error)
+	GetPostByID(ctx context.Context, id string) (*Post, error)
+	DeletePostByID(ctx context.Context, id string) error
 }
 
 type PostBlogRepo struct {
@@ -106,7 +107,7 @@ func (p *PostBlogRepo) CreatePost(ctx context.Context, post Post) (*Post, error)
 	return &post, nil
 }
 
-func (p *PostBlogRepo) GetPost(ctx context.Context, id string) (*Post, error) {
+func (p *PostBlogRepo) GetPostByID(ctx context.Context, id string) (*Post, error) {
 	if len(id) == 0 {
 		return nil, fmt.Errorf("id is empty")
 	}
@@ -275,6 +276,23 @@ func (p *PostBlogRepo) baseQuery(status, kind, tag string) firestore.Query {
 	}
 
 	return q
+}
+
+func (p *PostBlogRepo) DeletePostByID(ctx context.Context, id string) error {
+	if len(id) == 0 {
+		return fmt.Errorf("id is empty")
+	}
+
+	_, err := p.client.Collection(Collections).Doc(id).Delete(ctx, firestore.Exists)
+
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	return nil
 }
 
 const maxSlugLen = 60

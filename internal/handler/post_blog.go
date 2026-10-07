@@ -64,6 +64,7 @@ type PostBlogApi interface {
 	CreatePost(w http.ResponseWriter, r *http.Request)
 	GetPostByID(w http.ResponseWriter, r *http.Request)
 	GetPosts(w http.ResponseWriter, r *http.Request)
+	DeletePostByID(w http.ResponseWriter, r *http.Request)
 }
 
 type PostBlogController struct {
@@ -130,7 +131,7 @@ func (p *PostBlogController) GetPostByID(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	gp, err := p.repo.GetPost(r.Context(), id)
+	gp, err := p.repo.GetPostByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			httpx.WriteError(w, http.StatusNotFound, "not_found", "查無此文章")
@@ -217,6 +218,29 @@ func (p *PostBlogController) GetPosts(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteErrLog("伺服器回應失敗", "GetPosts", "[post_blog] errMsg", err)
 		return
 	}
+}
+
+func (p *PostBlogController) DeletePostByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	if len(id) == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id 必須填寫")
+		return
+	}
+
+	err := p.repo.DeletePostByID(r.Context(), id)
+
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "not_found", "查無此文章，刪除失敗")
+			return
+		}
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "刪除文章失敗詳情請查看 Log")
+		httpx.WriteErrLog("伺服器回應失敗", "DeletePostByID", "[post_blog] errMsg", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func handleError(err error, w http.ResponseWriter) {

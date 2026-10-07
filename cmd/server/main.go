@@ -58,6 +58,7 @@ func main() {
 	api.HandleFunc("POST /posts", pbApi.CreatePost)
 	api.HandleFunc("GET /posts/{id}", pbApi.GetPostByID)
 	api.HandleFunc("GET /posts", pbApi.GetPosts)
+	api.HandleFunc("DELETE /posts/{id}", pbApi.DeletePostByID)
 
 	root := http.NewServeMux()
 

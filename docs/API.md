@@ -155,9 +155,10 @@ Authorization: Bearer <firebase-id-token>
 1. 重新跑 goldmark + bluemonday → 更新 `html`
 2. 重算 `toc`、`readingMin`、`hasCode`
 3. 更新 `updatedAt`
-4. `tagSlugs` 有變 → transaction 更新 `tags.count`
-5. `slug` 有變 → 寫一筆 `redirects`
-6. **失效快取**（見下）
+4. `slug` 有變 → 寫一筆 `redirects`
+5. **失效快取**（見下）
+
+`tags.count` 不用維護，它是讀取時現算的（見 `GET /api/tags`）。
 
 → `200`，回傳完整物件。
 
@@ -188,6 +189,9 @@ Authorization: Bearer <firebase-id-token>
 ```jsonc
 { "items": [ { "slug": "go", "name": "Go", "count": 12 } ] }
 ```
+
+`count` 是**已發布**文章數，不含草稿。不存在資料庫裡，每次請求用聚合查詢現算，
+所以永遠跟實際文章一致。
 
 ### `PUT /api/tags/{slug}`
 

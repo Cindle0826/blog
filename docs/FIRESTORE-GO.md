@@ -240,11 +240,22 @@ _, err := c.Collection("posts").Doc(id).Update(ctx, []firestore.Update{
 _, err := c.Collection("posts").Doc(id).Delete(ctx)
 ```
 
-刪不存在的文件**不會報錯**。要區分「刪掉了」和「本來就沒有」的話，得先 Get。
+刪不存在的文件**不會報錯**。要區分「刪掉了」和「本來就沒有」，加上 `firestore.Exists`
+前置條件，文件不存在時會回 `codes.NotFound`，不用先 Get：
+
+```go
+_, err := c.Collection("posts").Doc(id).Delete(ctx, firestore.Exists)
+if status.Code(err) == codes.NotFound {
+    // 本來就沒有
+}
+```
 
 ---
 
 ## Transaction
+
+> 本專案最後**沒有**用交易維護 `tags.count`，改用聚合查詢即時算（見下一節）。
+> 這段留著當交易的寫法參考。
 
 改 tag 的同時維護 `tags.count`，兩邊必須一起成功或一起失敗：
 
@@ -297,7 +308,7 @@ err := c.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction
 
 ## 一個可能讓你不用維護 count 的選項
 
-`FIRESTORE.md` 目前的設計是用交易維護 `tags.count`。但 Firestore 有**聚合查詢**：
+`FIRESTORE.md` 原本的設計是用交易維護 `tags.count`。但 Firestore 有**聚合查詢**：
 
 ```go
 q := c.Collection("posts").
@@ -324,7 +335,7 @@ n, _ := res.Data()["n"].(int64)
 **你這個規模（< 50 個標籤、< 500 篇文章），我覺得聚合查詢比較划算** —— 少一個要維護一致性的
 地方，而且 count 不可能算錯。交易那套的價值要在「每秒好幾次寫入」時才顯現。
 
-這件事列進契約 review 的討論項，你決定。
+**2026-10-07 決定採用聚合查詢。** `tags` 文件不存 `count`，寫入文章的 API 都不用處理它。
 
 ---
 

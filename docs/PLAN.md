@@ -1,6 +1,6 @@
 # 開發計畫
 
-最後更新：2026-10-04
+最後更新：2026-10-07
 
 ## 決策紀錄
 
@@ -119,6 +119,8 @@
       已讀 `GOOGLE_CLOUD_PROJECT`、`ADMIN_UIDS`、`BLOG_DEV` 與模擬器防呆；
       還沒讀 `BLOG_BASE_URL`、`BLOG_UPLOADS_BUCKET`，也還沒組 `view.Site`
 - [ ] 2A.2　`internal/store` — Firestore client 與 CRUD（進度見 4.3 的表）
+      已完成：CreatePost、GetPost、ListPosts（後台，Go 端搜尋／排序／分頁）、
+      GetPublishedBySlug、ListPublished、CountPublished（公開頁，Firestore 分頁）
 - [ ] 2A.3　`internal/markdown` — goldmark + chroma + bluemonday，產出 `html`/`toc`/`readingMin`
       目前 `CreatePost` 存進去的 `html` 是空的，公開頁面要等這一項
 - [ ] 2A.4　slug 產生與唯一性檢查
@@ -169,20 +171,20 @@
 | 端點 | store | handler | 測試 | 備註 |
 |---|---|---|---|---|
 | `POST /api/posts` | ✅ | ✅ | 3、11 | 撞號回 409（測試 10）要等 2A.4 |
-| `GET /api/posts/{id}` | ✅ `GetPost` | ⬜ | 4、9 | 最小的一支，只差 handler |
-| `GET /api/posts` | ⬜ | ⬜ | 5、5b、5c | 後台版：不過濾 status，要支援 `search`、`page`、`limit` |
-| `DELETE /api/posts/{id}` | ⬜ | ⬜ | 18、19 | 做完才能清掉測試文章 |
-| `POST /api/posts/{id}/publish` | ⬜ | ⬜ | 7、8 | 退回草稿時 `publishedAt` 不能清掉 |
-| `PATCH /api/posts/{id}` | ⬜ | ⬜ | 6 | 最大的一支：重算 html/toc、tags.count、slug 改名寫 redirects、`updatedAt` 要顯式送 `ServerTimestamp` |
+| `GET /api/posts/{id}` | ✅ | ✅ | 4、9 | |
+| `GET /api/posts` | ✅ | ✅ | 5、5b、5c | 分頁在 Go 做，原因寫在 `ListPosts` 的註解 |
+| `DELETE /api/posts/{id}` | ✅ | ✅ | 18、19 | 用 `firestore.Exists` 讓不存在的文件回 NotFound，不然 Firestore 會當成功 |
+| `POST /api/posts/{id}/publish` | ⬜ | ⬜ | 7、8 | **下一支**。退回草稿時 `publishedAt` 不能清掉 |
+| `PATCH /api/posts/{id}` | ⬜ | ⬜ | 6 | 最大的一支：重算 html/toc、slug 改名寫 redirects、`updatedAt` 要顯式送 `ServerTimestamp` |
 | `GET /api/tags` | ⬜ | ⬜ | 12 | |
 | `PUT /api/tags/{slug}` | ⬜ | ⬜ | 13 | |
 | `POST /api/uploads` | ⬜ | ⬜ | 14 | 4.4，需要 GCS 與縮圖 |
 | `GET /images/{path...}` | ⬜ | ⬜ | 15、16 | 4.4b，公開路由，不經過 `RequireAdmin` |
 | `POST /api/cache/purge` | — | ⬜ | 17 | 依賴 2A.6 `internal/cache` |
 
-> 寫 PATCH / DELETE 之前要先決定 `tags.count` 的做法：交易維護，或改用聚合查詢即時算
+> `tags.count` 決定用聚合查詢即時算（2026-10-07），不存在 `tags` 文件裡
 > （[`FIRESTORE-GO.md`](FIRESTORE-GO.md)「一個可能讓你不用維護 count 的選項」）。
-> 選聚合查詢的話，PATCH 和 DELETE 都不用處理 count，會簡單很多。
+> 所以 PATCH、DELETE、publish 都不用處理 count，只有 `GET /api/tags` 要數。
 
 ### 管理帳號
 
@@ -238,12 +240,15 @@
 
 ## 目前狀態
 
-Phase 0、1、2B 完成。Phase 4 的登入與 middleware 完成，`POST /api/posts` 已經可以
-實際寫入 Firestore。分頁採頁碼（`Offset` + `Limit` + 聚合查詢算總數）。
+Phase 0、1、2B 完成。Phase 4 的登入與 middleware、後台 React（4.5、4.7）完成。
+後台 API 完成 4 支：`POST /api/posts`、`GET /api/posts/{id}`、`GET /api/posts`、`DELETE /api/posts/{id}`，
+皆已用真的 Firestore 實測。2026-10-07 Go 升到 1.27.1，govulncheck 0 個可呼叫漏洞。
 
 下一步：cindle 依 4.3 的表繼續寫後台 API，建議順序是
-`GET /api/posts/{id}` → `GET /api/posts` → `DELETE` → `publish` → slug 唯一性 → `PATCH`
-→ 標籤 → 上傳與圖片 → 快取失效。後台 React（4.5–4.7）已完成，每寫完一支 API，後台對應的畫面就能直接用。
+`publish` → slug 唯一性 → `PATCH` → 標籤 → 上傳與圖片 → 快取失效。
+`tags.count` 改用聚合查詢即時算，寫入的 API 都不用維護它（見 4.3 表下方的說明）。
+
+待確認：4.6 的真實 Google 登入還沒在後台實際走過一次（`npm run dev` + Go server）。
 
 注意：Cloud Run 目前跑的還是佔位的 `hello` image，blog server 要到 Phase 6 才部署。
 

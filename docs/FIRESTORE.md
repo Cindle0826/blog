@@ -103,13 +103,17 @@ document ID 直接用 slug，方便直接 `Get`。
 ```jsonc
 {
   "name":  "Kubernetes",   // 顯示名稱，大小寫由你決定
-  "count": 8,              // 已發布文章數（不含草稿）
-  "order": 0               // 手動排序用，0 表示依 count 排
+  "order": 0               // 手動排序用，0 表示依文章數排
 }
 ```
 
-`count` 在文章發布／取消發布／改 tag 時用 transaction 更新。
-**不要**每次列表頁都去 count 一次——那是 N 次讀取，免費額度會燒很快。
+**文章數不存在這裡。** `GET /api/tags` 回的 `count` 是讀取時用聚合查詢現算的
+（`status == "published"` + `tagSlugs array-contains`），所以新增、修改、刪除、
+發布文章時都不用回頭改 `tags`，數字也不可能跟實際文章對不上。
+
+成本：每個標籤一次聚合查詢，一次最多數 1000 筆只算 1 次讀取。10 個標籤就是
+每次 10 次讀取，免費額度一天 5 萬次；公開站的標籤頁還有 CDN 快取擋在前面。
+細節和取捨見 [`FIRESTORE-GO.md`](FIRESTORE-GO.md)「一個可能讓你不用維護 count 的選項」。
 
 ---
 

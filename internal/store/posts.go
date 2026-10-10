@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const Collections = "posts"
+const postsCollection = "posts"
 
 type Post struct {
 	// firestore:"-" 表示不寫進文件。document ID 存在 snapshot.Ref.ID，
@@ -63,26 +63,16 @@ type Image struct {
 	Height int    `firestore:"height"`
 }
 
-type PostsRepository interface {
-	GetPublishedBySlug(ctx context.Context, slug string) (*Post, error)
-	ListPosts(ctx context.Context, kind, tag, search, status string, page, perPage int) ([]Post, int, error)
-	ListPublished(ctx context.Context, kind, tag string, page, perPage int) ([]Post, error)
-	CountPublished(ctx context.Context, kind, tag string) (int, error)
-	CreatePost(ctx context.Context, post Post) (*Post, error)
-	GetPostByID(ctx context.Context, id string) (*Post, error)
-	DeletePostByID(ctx context.Context, id string) error
-}
-
-type PostBlogRepo struct {
+type PostStore struct {
 	client *firestore.Client
 }
 
-func NewPostBlog(client *firestore.Client) *PostBlogRepo {
-	return &PostBlogRepo{client: client}
+func NewPostStore(client *firestore.Client) *PostStore {
+	return &PostStore{client: client}
 }
 
-func (p *PostBlogRepo) CreatePost(ctx context.Context, post Post) (*Post, error) {
-	ref := p.client.Collection(Collections).NewDoc()
+func (p *PostStore) Create(ctx context.Context, post Post) (*Post, error) {
+	ref := p.client.Collection(postsCollection).NewDoc()
 
 	post.ID = ref.ID
 	post.Status = "draft"
@@ -97,22 +87,20 @@ func (p *PostBlogRepo) CreatePost(ctx context.Context, post Post) (*Post, error)
 		post.Slug = makeSlug(post.Title, post.ID)
 	}
 
-	wr, err := ref.Create(ctx, &post)
+	_, err := ref.Create(ctx, &post)
 	if err != nil {
 		return nil, err
 	}
 
-	post.UpdatedAt = wr.UpdateTime
-
-	return &post, nil
+	return p.Get(ctx, ref.ID)
 }
 
-func (p *PostBlogRepo) GetPostByID(ctx context.Context, id string) (*Post, error) {
+func (p *PostStore) Get(ctx context.Context, id string) (*Post, error) {
 	if len(id) == 0 {
 		return nil, fmt.Errorf("id is empty")
 	}
 
-	snap, err := p.client.Collection(Collections).Doc(id).Get(ctx)
+	snap, err := p.client.Collection(postsCollection).Doc(id).Get(ctx)
 	switch status.Code(err) {
 	case codes.OK:
 	case codes.NotFound, codes.InvalidArgument:
@@ -129,8 +117,8 @@ func (p *PostBlogRepo) GetPostByID(ctx context.Context, id string) (*Post, error
 	return &post, nil
 }
 
-func (p *PostBlogRepo) GetPublishedBySlug(ctx context.Context, slug string) (*Post, error) {
-	iter := p.client.Collection(Collections).
+func (p *PostStore) GetPublishedBySlug(ctx context.Context, slug string) (*Post, error) {
+	iter := p.client.Collection(postsCollection).
 		Where("slug", "==", slug).
 		Where("status", "==", "published").
 		Limit(1).
@@ -155,7 +143,7 @@ func (p *PostBlogRepo) GetPublishedBySlug(ctx context.Context, slug string) (*Po
 	return &post, nil
 }
 
-// ListPosts 回傳後台列表的一頁文章，以及符合條件的總篇數。
+// List 回傳後台列表的一頁文章，以及符合條件的總篇數。
 //
 // 分頁刻意在 Go 裡做，不用 Firestore 的 Offset / Limit，原因有兩個：
 //
@@ -177,7 +165,7 @@ func (p *PostBlogRepo) GetPublishedBySlug(ctx context.Context, slug string) (*Po
 //
 // 公開頁面用的 ListPublished 沒有搜尋、只照 publishedAt 排序，Terraform 也
 // 建好了對應的索引，所以那邊仍然在 Firestore 分頁。
-func (p *PostBlogRepo) ListPosts(ctx context.Context, kind, tag, search, status string, page, perPage int) ([]Post, int, error) {
+func (p *PostStore) List(ctx context.Context, kind, tag, search, status string, page, perPage int) ([]Post, int, error) {
 	q := p.baseQuery(status, kind, tag)
 
 	snaps, err := q.Documents(ctx).GetAll()
@@ -219,7 +207,7 @@ func (p *PostBlogRepo) ListPosts(ctx context.Context, kind, tag, search, status 
 	return posts[start:end], total, nil
 }
 
-func (p *PostBlogRepo) ListPublished(ctx context.Context, kind, tag string, page, perPage int) ([]Post, error) {
+func (p *PostStore) ListPublished(ctx context.Context, kind, tag string, page, perPage int) ([]Post, error) {
 	snaps, err := p.publishedQuery(kind, tag).
 		OrderBy("publishedAt", firestore.Desc).
 		OrderBy(firestore.DocumentID, firestore.Desc).
@@ -240,7 +228,7 @@ func (p *PostBlogRepo) ListPublished(ctx context.Context, kind, tag string, page
 	return posts, err
 }
 
-func (p *PostBlogRepo) CountPublished(ctx context.Context, kind, tag string) (int, error) {
+func (p *PostStore) CountPublished(ctx context.Context, kind, tag string) (int, error) {
 	q := p.publishedQuery(kind, tag)
 	res, err := q.NewAggregationQuery().WithCount("n").Get(ctx)
 	if err != nil {
@@ -255,13 +243,13 @@ func (p *PostBlogRepo) CountPublished(ctx context.Context, kind, tag string) (in
 	return int(n), nil
 }
 
-func (p *PostBlogRepo) publishedQuery(kind, tag string) firestore.Query {
+func (p *PostStore) publishedQuery(kind, tag string) firestore.Query {
 	q := p.baseQuery("published", kind, tag)
 	return q
 }
 
-func (p *PostBlogRepo) baseQuery(status, kind, tag string) firestore.Query {
-	q := p.client.Collection(Collections).Query
+func (p *PostStore) baseQuery(status, kind, tag string) firestore.Query {
+	q := p.client.Collection(postsCollection).Query
 
 	if len(status) != 0 {
 		q = q.Where("status", "==", status)
@@ -278,12 +266,12 @@ func (p *PostBlogRepo) baseQuery(status, kind, tag string) firestore.Query {
 	return q
 }
 
-func (p *PostBlogRepo) DeletePostByID(ctx context.Context, id string) error {
+func (p *PostStore) Delete(ctx context.Context, id string) error {
 	if len(id) == 0 {
 		return fmt.Errorf("id is empty")
 	}
 
-	_, err := p.client.Collection(Collections).Doc(id).Delete(ctx, firestore.Exists)
+	_, err := p.client.Collection(postsCollection).Doc(id).Delete(ctx, firestore.Exists)
 
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -295,30 +283,38 @@ func (p *PostBlogRepo) DeletePostByID(ctx context.Context, id string) error {
 	return nil
 }
 
-const maxSlugLen = 60
+func (p *PostStore) SetPublished(ctx context.Context, id string, publish bool) (*Post, error) {
+	post, err := p.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 
-// makeSlug 由標題產生 URL 用的 slug；標題裡沒有任何英數字元時，
-// 退回 "post-" + id 前 8 碼。
-func makeSlug(title, id string) string {
-	var b strings.Builder
-	lastHyphen := true // 一開始就當作剛寫過連字號，這樣開頭的符號不會產生連字號
+	ref := p.client.Collection(postsCollection).Doc(id)
 
-	for _, r := range strings.ToLower(title) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-			lastHyphen = false
-		} else if !lastHyphen {
-			b.WriteByte('-')
-			lastHyphen = true
+	ups := []firestore.Update{
+		{Path: "updatedAt", Value: firestore.ServerTimestamp},
+	}
+
+	var s string
+	if publish {
+		s = "published"
+	} else {
+		s = "draft"
+	}
+
+	ups = append(ups, firestore.Update{Path: "status", Value: s})
+
+	if publish && post.PublishedAt == nil {
+		ups = append(ups, firestore.Update{Path: "publishedAt", Value: firestore.ServerTimestamp})
+	}
+
+	_, err = ref.Update(ctx, ups)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, ErrNotFound
 		}
+		return nil, err
 	}
 
-	slug := strings.TrimRight(b.String(), "-")
-	if len(slug) > maxSlugLen {
-		slug = strings.TrimRight(slug[:maxSlugLen], "-")
-	}
-	if slug == "" {
-		return "post-" + id[:8]
-	}
-	return slug
+	return p.Get(ctx, id)
 }

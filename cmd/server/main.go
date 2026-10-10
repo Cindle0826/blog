@@ -50,15 +50,16 @@ func main() {
 	}()
 
 	// init PostBlog handler
-	pbRepo := store.NewPostBlog(fsClient)
-	pbApi := h.NewPostBlogController(pbRepo)
+	postsRepo := store.NewPostStore(fsClient)
+	postsHandler := h.NewPostHandler(postsRepo)
 
 	// init api handler
 	api := http.NewServeMux()
-	api.HandleFunc("POST /posts", pbApi.CreatePost)
-	api.HandleFunc("GET /posts/{id}", pbApi.GetPostByID)
-	api.HandleFunc("GET /posts", pbApi.GetPosts)
-	api.HandleFunc("DELETE /posts/{id}", pbApi.DeletePostByID)
+	api.HandleFunc("POST /posts", postsHandler.Create)
+	api.HandleFunc("GET /posts/{id}", postsHandler.Get)
+	api.HandleFunc("GET /posts", postsHandler.List)
+	api.HandleFunc("DELETE /posts/{id}", postsHandler.Delete)
+	api.HandleFunc("POST /posts/{id}/publish", postsHandler.SetPublished)
 
 	root := http.NewServeMux()
 

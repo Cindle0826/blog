@@ -130,7 +130,7 @@ func (a *Authenticator) RequireAdmin(next http.Handler) http.Handler {
 掛上去：
 
 ```go
-mux.Handle("GET /api/posts", a.RequireAdmin(http.HandlerFunc(h.ListPosts)))
+mux.Handle("GET /api/posts", a.RequireAdmin(http.HandlerFunc(h.List)))
 ```
 
 ### 取出 Bearer token

@@ -1,6 +1,6 @@
 # 開發計畫
 
-最後更新：2026-10-07
+最後更新：2026-10-10
 
 ## 決策紀錄
 
@@ -119,10 +119,10 @@
       已讀 `GOOGLE_CLOUD_PROJECT`、`ADMIN_UIDS`、`BLOG_DEV` 與模擬器防呆；
       還沒讀 `BLOG_BASE_URL`、`BLOG_UPLOADS_BUCKET`，也還沒組 `view.Site`
 - [ ] 2A.2　`internal/store` — Firestore client 與 CRUD（進度見 4.3 的表）
-      已完成：CreatePost、GetPost、ListPosts（後台，Go 端搜尋／排序／分頁）、
+      已完成：`PostStore` 的 Create、Get、List（後台，Go 端搜尋／排序／分頁）、Delete、SetPublished、
       GetPublishedBySlug、ListPublished、CountPublished（公開頁，Firestore 分頁）
 - [ ] 2A.3　`internal/markdown` — goldmark + chroma + bluemonday，產出 `html`/`toc`/`readingMin`
-      目前 `CreatePost` 存進去的 `html` 是空的，公開頁面要等這一項
+      目前 `Create` 存進去的 `html` 是空的，公開頁面要等這一項
 - [ ] 2A.4　slug 產生與唯一性檢查
       產生已完成（`makeSlug` + 單元測試）；唯一性檢查（撞號加 `-2`、回 409）還沒做
 - [ ] 2A.5　`internal/handler/public.go` — 填 `view.*VM`
@@ -170,12 +170,12 @@
 
 | 端點 | store | handler | 測試 | 備註 |
 |---|---|---|---|---|
-| `POST /api/posts` | ✅ | ✅ | 3、11 | 撞號回 409（測試 10）要等 2A.4 |
+| `POST /api/posts` | ✅ | ✅ | 3、11 | 撞號回 409（測試 10）要等 2A.4，**下一步**做這個 |
 | `GET /api/posts/{id}` | ✅ | ✅ | 4、9 | |
-| `GET /api/posts` | ✅ | ✅ | 5、5b、5c | 分頁在 Go 做，原因寫在 `ListPosts` 的註解 |
+| `GET /api/posts` | ✅ | ✅ | 5、5b、5c | 分頁在 Go 做，原因寫在 `PostStore.List` 的註解 |
 | `DELETE /api/posts/{id}` | ✅ | ✅ | 18、19 | 用 `firestore.Exists` 讓不存在的文件回 NotFound，不然 Firestore 會當成功 |
-| `POST /api/posts/{id}/publish` | ⬜ | ⬜ | 7、8 | **下一支**。退回草稿時 `publishedAt` 不能清掉 |
-| `PATCH /api/posts/{id}` | ⬜ | ⬜ | 6 | 最大的一支：重算 html/toc、slug 改名寫 redirects、`updatedAt` 要顯式送 `ServerTimestamp` |
+| `POST /api/posts/{id}/publish` | ✅ | ✅ | 7、8 | 退回草稿不清 `publishedAt`；寫完重新 Get 再回傳，見下方說明 |
+| `PATCH /api/posts/{id}` | ⬜ | ⬜ | 6 | slug 唯一性做完後的**下一支**。最大的一支：重算 html/toc、slug 改名寫 redirects、`updatedAt` 要顯式送 `ServerTimestamp` |
 | `GET /api/tags` | ⬜ | ⬜ | 12 | |
 | `PUT /api/tags/{slug}` | ⬜ | ⬜ | 13 | |
 | `POST /api/uploads` | ⬜ | ⬜ | 14 | 4.4，需要 GCS 與縮圖 |
@@ -185,6 +185,10 @@
 > `tags.count` 決定用聚合查詢即時算（2026-10-07），不存在 `tags` 文件裡
 > （[`FIRESTORE-GO.md`](FIRESTORE-GO.md)「一個可能讓你不用維護 count 的選項」）。
 > 所以 PATCH、DELETE、publish 都不用處理 count，只有 `GET /api/tags` 要數。
+>
+> 寫入後要回傳完整物件的 API（POST、publish、之後的 PATCH）一律**寫完再 Get 一次**。
+> `ServerTimestamp` 存的是伺服器收到請求的時間（精確到毫秒），`WriteResult.UpdateTime`
+> 是 commit 時間，兩者實測差了約 20ms，拿後者填回應會跟之後 GET 到的值對不上。
 
 ### 管理帳號
 
@@ -241,11 +245,12 @@
 ## 目前狀態
 
 Phase 0、1、2B 完成。Phase 4 的登入與 middleware、後台 React（4.5、4.7）完成。
-後台 API 完成 4 支：`POST /api/posts`、`GET /api/posts/{id}`、`GET /api/posts`、`DELETE /api/posts/{id}`，
+後台 API 完成 5 支：`POST /api/posts`、`GET /api/posts/{id}`、`GET /api/posts`、`DELETE /api/posts/{id}`、
+`POST /api/posts/{id}/publish`，
 皆已用真的 Firestore 實測。2026-10-07 Go 升到 1.27.1，govulncheck 0 個可呼叫漏洞。
 
 下一步：cindle 依 4.3 的表繼續寫後台 API，建議順序是
-`publish` → slug 唯一性 → `PATCH` → 標籤 → 上傳與圖片 → 快取失效。
+slug 唯一性 → `PATCH` → 標籤 → 上傳與圖片 → 快取失效。
 `tags.count` 改用聚合查詢即時算，寫入的 API 都不用維護它（見 4.3 表下方的說明）。
 
 待確認：4.6 的真實 Google 登入還沒在後台實際走過一次（`npm run dev` + Go server）。

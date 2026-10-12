@@ -60,6 +60,7 @@ func main() {
 	api.HandleFunc("GET /posts", postsHandler.List)
 	api.HandleFunc("DELETE /posts/{id}", postsHandler.Delete)
 	api.HandleFunc("POST /posts/{id}/publish", postsHandler.SetPublished)
+	api.HandleFunc("PATCH /posts/{id}", postsHandler.Update)
 
 	root := http.NewServeMux()
 
@@ -69,6 +70,7 @@ func main() {
 
 	// middleware
 	var handler http.Handler = root
+	handler = h.Recover(handler)
 	handler = h.Logger(handler)
 
 	addr := ":" + cfg.Server.Port

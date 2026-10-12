@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -65,12 +66,23 @@ type postPublish struct {
 	Publish *bool `json:"publish"`
 }
 
+type updatePostRequest struct {
+	Title    *string         `json:"title"`
+	Kind     *string         `json:"kind"`
+	Markdown *string         `json:"markdown"`
+	TagSlugs *[]string       `json:"tagSlugs"`
+	Summary  *string         `json:"summary"`
+	Cover    json.RawMessage `json:"cover"`
+	Pinned   *bool           `json:"pinned"`
+}
+
 type postStore interface {
 	List(ctx context.Context, kind, tag, search, status string, page, perPage int) ([]store.Post, int, error)
 	Create(ctx context.Context, post store.Post) (*store.Post, error)
 	Get(ctx context.Context, id string) (*store.Post, error)
 	Delete(ctx context.Context, id string) error
 	SetPublished(ctx context.Context, id string, publish bool) (*store.Post, error)
+	Update(ctx context.Context, id string, patch store.PostPatch) (*store.Post, error)
 }
 
 type PostHandler struct {
@@ -290,6 +302,66 @@ func (p *PostHandler) SetPublished(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (p *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	if len(id) == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id 必須填寫")
+		return
+	}
+
+	var req updatePostRequest
+
+	decoder := json.NewDecoder(r.Body)
+	// 嚴格判斷參數
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		handleError(err, w)
+		return
+	}
+
+	if req.Title != nil && len(strings.TrimSpace(*req.Title)) == 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Title 必須填寫")
+		return
+	}
+
+	if req.Kind != nil && *req.Kind != "post" && *req.Kind != "note" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Kind 型別必須為 post 或是 note")
+		return
+	}
+
+	patch, err := req.toPatch()
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Cover 解析錯誤")
+		return
+	}
+
+	if patch == (store.PostPatch{}) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "沒有要更新的欄位")
+		return
+	}
+
+	up, err := p.repo.Update(r.Context(), id, patch)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "not_found", "查無此文章")
+			return
+		}
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "更新文章失敗詳情請查看 Log")
+		httpx.WriteErrLog("伺服器回應失敗", "Update", "[posts_handler] errMsg", err)
+		return
+	}
+	// 轉換 response
+	pr := toPostDetail(up)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(pr); err != nil {
+		httpx.WriteErrLog("伺服器回應失敗", "Update", "[posts_handler] errMsg", err)
+		return
+	}
+}
+
 func handleError(err error, w http.ResponseWriter) {
 	var (
 		syntaxErr        *json.SyntaxError
@@ -304,6 +376,9 @@ func handleError(err error, w http.ResponseWriter) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "資料解析有誤")
 	case errors.Is(err, io.EOF):
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "資料傳遞為空")
+	case strings.HasPrefix(err.Error(), "json: unknown field"):
+		fieldName := strings.TrimPrefix(err.Error(), "json: unknown field ")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("%s 為不合法參數", fieldName))
 	case errors.As(err, &maxBytesErr):
 		httpx.WriteError(w, http.StatusRequestEntityTooLarge, "invalid_request", "資料傳遞過大")
 	default:
@@ -372,4 +447,47 @@ func parsePositive(s string, def int) (int, bool) {
 	}
 
 	return n, true
+}
+
+func (r updatePostRequest) toPatch() (store.PostPatch, error) {
+	patch := store.PostPatch{
+		Title:    r.Title,
+		Kind:     r.Kind,
+		Summary:  r.Summary,
+		Markdown: r.Markdown,
+		TagSlugs: r.TagSlugs,
+		Pinned:   r.Pinned,
+	}
+	switch {
+	case r.Cover == nil:
+		// 沒送
+	case string(r.Cover) == "null":
+		patch.RemoveCover = true
+	default:
+		var img store.Image
+		if err := json.Unmarshal(r.Cover, &img); err != nil {
+			return store.PostPatch{}, err
+		}
+
+		if !strings.HasPrefix(img.URL, "/images/") {
+			return store.PostPatch{}, fmt.Errorf("cover URL 必須以 /images/ 開頭")
+		}
+
+		if img.Height < 1 {
+			return store.PostPatch{}, fmt.Errorf("cover Height 不能小於 1")
+		}
+
+		if img.Width < 1 {
+			return store.PostPatch{}, fmt.Errorf("cover Width 不能小於 1")
+		}
+
+		patch.Cover = &img
+	}
+
+	if r.Title != nil {
+		t := strings.TrimSpace(*r.Title)
+		patch.Title = &t
+	}
+
+	return patch, nil
 }

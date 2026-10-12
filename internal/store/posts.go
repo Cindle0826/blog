@@ -57,14 +57,25 @@ type TOCItem struct {
 }
 
 type Image struct {
-	URL    string `firestore:"url"`
-	Alt    string `firestore:"alt"`
-	Width  int    `firestore:"width"`
-	Height int    `firestore:"height"`
+	URL    string `firestore:"url" json:"url"`
+	Alt    string `firestore:"alt" json:"alt"`
+	Width  int    `firestore:"width" json:"width"`
+	Height int    `firestore:"height" json:"height"`
 }
 
 type PostStore struct {
 	client *firestore.Client
+}
+
+type PostPatch struct {
+	Title       *string
+	Kind        *string
+	Summary     *string
+	Markdown    *string
+	TagSlugs    *[]string
+	Pinned      *bool
+	Cover       *Image
+	RemoveCover bool
 }
 
 func NewPostStore(client *firestore.Client) *PostStore {
@@ -316,5 +327,49 @@ func (p *PostStore) SetPublished(ctx context.Context, id string, publish bool) (
 		return nil, err
 	}
 
+	return p.Get(ctx, id)
+}
+
+func (p *PostStore) Update(ctx context.Context, id string, patch PostPatch) (*Post, error) {
+	ups := []firestore.Update{
+		{Path: "updatedAt", Value: firestore.ServerTimestamp},
+	}
+
+	if patch.Title != nil {
+		ups = append(ups, firestore.Update{Path: "title", Value: *patch.Title})
+	}
+	if patch.Pinned != nil {
+		ups = append(ups, firestore.Update{Path: "pinned", Value: *patch.Pinned})
+	}
+	if patch.Kind != nil {
+		ups = append(ups, firestore.Update{Path: "kind", Value: *patch.Kind})
+	}
+	if patch.Summary != nil {
+		ups = append(ups, firestore.Update{Path: "summary", Value: *patch.Summary})
+	}
+	if patch.Markdown != nil {
+		ups = append(ups, firestore.Update{Path: "markdown", Value: *patch.Markdown})
+	}
+	if patch.TagSlugs != nil {
+		ups = append(ups, firestore.Update{Path: "tagSlugs", Value: *patch.TagSlugs})
+	}
+
+	switch {
+	case patch.RemoveCover:
+		ups = append(ups, firestore.Update{Path: "cover", Value: nil})
+	case patch.Cover != nil:
+		ups = append(ups, firestore.Update{Path: "cover", Value: *patch.Cover})
+	}
+
+	// TODO(2A.3): Markdown 有改時，重算 html、toc、readingMin、hasCode
+	// TODO(2A.4): 支援改 slug（唯一性檢查 + 寫 redirects）
+
+	ref := p.client.Collection(postsCollection).Doc(id)
+	if _, err := ref.Update(ctx, ups); err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
 	return p.Get(ctx, id)
 }

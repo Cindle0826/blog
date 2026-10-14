@@ -99,7 +99,6 @@ func initFireStore(ctx context.Context, cfg config.Config) (*firestore.Client, e
 	if err != nil {
 		return nil, fmt.Errorf("firestore client: %w", err)
 	}
-	//defer client.Close()
 
 	return client, nil
 }

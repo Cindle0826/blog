@@ -10,9 +10,7 @@ type Config struct {
 	Server    Server
 	Firebase  Firebase
 	Firestore Firestore
-
-	// BLOG_DEV=1。模板每次請求重讀、開 CORS，以及允許連 Auth 模擬器。
-	Dev bool
+	Dev       bool
 }
 
 type Server struct {

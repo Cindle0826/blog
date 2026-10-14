@@ -97,12 +97,17 @@ func (p *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 
 	var req createPostRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
 		handleError(err, w)
 		return
 	}
 
-	if len(strings.TrimSpace(req.Title)) == 0 {
+	req.Title = strings.TrimSpace(req.Title)
+	req.Slug = strings.TrimSpace(req.Slug)
+
+	if len(req.Title) == 0 {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Title 必須填寫")
 		return
 	}
@@ -112,16 +117,19 @@ func (p *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	post := store.Post{
-		Title:    req.Title,
-		Kind:     req.Kind,
-		Markdown: req.Markdown,
-		Slug:     req.Slug,
-		TagSlugs: req.TagSlugs,
-		Summary:  req.Summary,
-		Cover:    req.Cover,
-		Pinned:   req.Pinned,
+	if len(req.Slug) != 0 && !store.ValidSlug(req.Slug) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "slug 只能用小寫英數與連字號，不能超過 60 字")
+		return
 	}
+
+	if req.Cover != nil {
+		if err := validateCover(*req.Cover); err != nil {
+			httpx.WriteError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+	}
+
+	post := req.toCreate()
 
 	cp, err := p.repo.Create(r.Context(), post)
 	if err != nil {
@@ -262,6 +270,8 @@ func (p *PostHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *PostHandler) SetPublished(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
 	id := r.PathValue("id")
 
 	if len(id) == 0 {
@@ -303,6 +313,8 @@ func (p *PostHandler) SetPublished(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
 	id := r.PathValue("id")
 
 	if len(id) == 0 {
@@ -376,6 +388,8 @@ func handleError(err error, w http.ResponseWriter) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "資料解析有誤")
 	case errors.Is(err, io.EOF):
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "資料傳遞為空")
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "資料不完整")
 	case strings.HasPrefix(err.Error(), "json: unknown field"):
 		fieldName := strings.TrimPrefix(err.Error(), "json: unknown field ")
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("%s 為不合法參數", fieldName))
@@ -469,16 +483,8 @@ func (r updatePostRequest) toPatch() (store.PostPatch, error) {
 			return store.PostPatch{}, err
 		}
 
-		if !strings.HasPrefix(img.URL, "/images/") {
-			return store.PostPatch{}, fmt.Errorf("cover URL 必須以 /images/ 開頭")
-		}
-
-		if img.Height < 1 {
-			return store.PostPatch{}, fmt.Errorf("cover Height 不能小於 1")
-		}
-
-		if img.Width < 1 {
-			return store.PostPatch{}, fmt.Errorf("cover Width 不能小於 1")
+		if err := validateCover(img); err != nil {
+			return store.PostPatch{}, err
 		}
 
 		patch.Cover = &img
@@ -490,4 +496,39 @@ func (r updatePostRequest) toPatch() (store.PostPatch, error) {
 	}
 
 	return patch, nil
+}
+
+func (c createPostRequest) toCreate() store.Post {
+	post := store.Post{
+		Title:    c.Title,
+		Kind:     c.Kind,
+		Markdown: c.Markdown,
+		Slug:     c.Slug,
+		Summary:  c.Summary,
+		Cover:    c.Cover,
+		Pinned:   c.Pinned,
+	}
+
+	if c.TagSlugs == nil {
+		post.TagSlugs = make([]string, 0)
+	} else {
+		post.TagSlugs = c.TagSlugs
+	}
+
+	return post
+}
+
+func validateCover(img store.Image) error {
+	if !strings.HasPrefix(img.URL, "/images/") {
+		return fmt.Errorf("cover URL 必須以 /images/ 開頭")
+	}
+
+	if img.Height < 1 {
+		return fmt.Errorf("cover Height 不能小於 1")
+	}
+
+	if img.Width < 1 {
+		return fmt.Errorf("cover Width 不能小於 1")
+	}
+	return nil
 }

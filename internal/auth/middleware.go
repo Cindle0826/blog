@@ -77,7 +77,7 @@ func (a *Authenticator) RequireAdmin(next http.Handler) http.Handler {
 
 func resolveToken(r *http.Request) (string, bool) {
 	token := r.Header.Get("Authorization")
-	const prefix = "bearer"
+	const prefix = "bearer "
 
 	if len(token) <= len(prefix) {
 		return "", false

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -15,6 +16,8 @@ import (
 )
 
 const postsCollection = "posts"
+
+var docIDPattern = regexp.MustCompile(`^[A-Za-z0-9]{20}$`)
 
 type Post struct {
 	// firestore:"-" 表示不寫進文件。document ID 存在 snapshot.Ref.ID，
@@ -107,14 +110,14 @@ func (p *PostStore) Create(ctx context.Context, post Post) (*Post, error) {
 }
 
 func (p *PostStore) Get(ctx context.Context, id string) (*Post, error) {
-	if len(id) == 0 {
-		return nil, fmt.Errorf("id is empty")
+	if !ValidID(id) {
+		return nil, ErrNotFound
 	}
 
 	snap, err := p.client.Collection(postsCollection).Doc(id).Get(ctx)
 	switch status.Code(err) {
 	case codes.OK:
-	case codes.NotFound, codes.InvalidArgument:
+	case codes.NotFound:
 		return nil, ErrNotFound
 	default:
 		return nil, err
@@ -226,6 +229,10 @@ func (p *PostStore) ListPublished(ctx context.Context, kind, tag string, page, p
 		Limit(perPage).
 		Documents(ctx).GetAll()
 
+	if err != nil {
+		return nil, err
+	}
+
 	var posts []Post
 	for _, snap := range snaps {
 		var post Post
@@ -236,7 +243,7 @@ func (p *PostStore) ListPublished(ctx context.Context, kind, tag string, page, p
 		posts = append(posts, post)
 	}
 
-	return posts, err
+	return posts, nil
 }
 
 func (p *PostStore) CountPublished(ctx context.Context, kind, tag string) (int, error) {
@@ -278,8 +285,8 @@ func (p *PostStore) baseQuery(status, kind, tag string) firestore.Query {
 }
 
 func (p *PostStore) Delete(ctx context.Context, id string) error {
-	if len(id) == 0 {
-		return fmt.Errorf("id is empty")
+	if !ValidID(id) {
+		return ErrNotFound
 	}
 
 	_, err := p.client.Collection(postsCollection).Doc(id).Delete(ctx, firestore.Exists)
@@ -331,6 +338,10 @@ func (p *PostStore) SetPublished(ctx context.Context, id string, publish bool) (
 }
 
 func (p *PostStore) Update(ctx context.Context, id string, patch PostPatch) (*Post, error) {
+	if !ValidID(id) {
+		return nil, ErrNotFound
+	}
+
 	ups := []firestore.Update{
 		{Path: "updatedAt", Value: firestore.ServerTimestamp},
 	}
@@ -372,4 +383,8 @@ func (p *PostStore) Update(ctx context.Context, id string, patch PostPatch) (*Po
 		return nil, err
 	}
 	return p.Get(ctx, id)
+}
+
+func ValidID(id string) bool {
+	return docIDPattern.MatchString(id)
 }

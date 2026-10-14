@@ -14,7 +14,7 @@ Firestore 用 **Native mode**（不是 Datastore mode）。
 | Collection | 用途 | 預估筆數 |
 |---|---|---|
 | `posts` | 文章與知識庫筆記（同一個 collection，靠 `kind` 區分） | < 500 |
-| `tags` | 標籤與計數 | < 50 |
+| `tags` | 標籤的顯示名稱與排序（文章數是讀取時現算的） | < 50 |
 | `meta` | 單例設定（站台資訊、about 內文） | 3 |
 
 **為什麼文章和筆記放同一個 collection**：兩者的欄位完全一樣，查詢也一樣。
@@ -70,7 +70,7 @@ Firestore 用 **Native mode**（不是 Datastore mode）。
   "pinned":      true,
   "publishedAt": "2026-09-18T02:00:00Z",   // Firestore Timestamp；draft 時為 null
   "createdAt":   "2026-09-17T14:22:00Z",
-  "updatedAt":   "2026-09-20T09:10:00Z"    // 只有「發布後又修改」才更新，見下
+  "updatedAt":   "2026-09-20T09:10:00Z"    // 每次存檔都更新；公開頁只在已發布後顯示，見下
 }
 ```
 
@@ -83,6 +83,7 @@ Firestore 用 **Native mode**（不是 Datastore mode）。
 | `publishedAt` | 第一次 `draft → published` 時才設定，之後不再變動 |
 | `updatedAt` | 每次存檔都更新，但**只有在已發布後才顯示給讀者** |
 | `html` | 必須是清洗過的。這是 XSS 的唯一防線 |
+| `cover` | 沒有封面時是 `null`，不是欄位不存在 |
 | `cover.width/height` | 必填。少了它瀏覽器無法預留空間，會造成版面位移（扣 CLS 分數） |
 | `cover.url` | 以 `/images/` 開頭的站台路徑，**不可**是 `storage.googleapis.com` 的網址 |
 | `markdown` 裡的圖片 | 同上，一律 `![alt](/images/...)` |
@@ -91,8 +92,12 @@ Firestore 用 **Native mode**（不是 Datastore mode）。
 
 1. 由標題產生：轉小寫、空白換連字號、去掉非英數字元
 2. 純中文標題 → 後端無法音譯 → 用 `post-` + document ID 前 8 碼
-3. 存檔前查 `where slug == ?`，撞到就在後面加 `-2`、`-3`
-4. **slug 改掉時必須在 `redirects` 留紀錄**（見下），否則舊連結全部 404，SEO 分數會掉
+3. 存檔前查 `where slug == ?` 確認沒被用過。撞到時看 slug 是誰給的：
+   - **後端從標題產生的** → 在後面加 `-2`、`-3`，直到不重複
+   - **使用者自己填的** → 回 `409 slug_conflict`，不要偷偷改成別的
+4. **改標題不會重新產生 slug。** slug 就是網址，文章發布後可能已被收錄或分享，
+   只有使用者明確送了新的 slug 才改
+5. **slug 改掉時必須在 `redirects` 留紀錄**（見下），否則舊連結全部 404，SEO 分數會掉
 
 ---
 
@@ -143,11 +148,12 @@ document ID 直接用 slug，方便直接 `Get`。
 ## 索引
 
 Firestore 單欄位索引是自動的，複合查詢要另外建。
-**四個都已經建好了**，由 Terraform 管理，見
+**五個都已經建好了**，由 Terraform 管理，見
 [`infrastruct_as_code/terraform/firestore.tf`](../infrastruct_as_code/terraform/firestore.tf)。
 
 | 資源 | 欄位 | 服務的查詢 |
 |---|---|---|
+| `posts_published` | `status, publishedAt DESC` | 不分類型、不分標籤的最新文章 |
 | `posts_by_kind` | `status, kind, publishedAt DESC` | 首頁、`/posts`、`/notes` |
 | `posts_pinned` | `status, kind, pinned DESC, publishedAt DESC` | 置頂優先的列表 |
 | `posts_by_tag` | `status, tagSlugs CONTAINS, publishedAt DESC` | 標籤頁 |
@@ -156,7 +162,17 @@ Firestore 單欄位索引是自動的，複合查詢要另外建。
 沒有索引的話，查詢會在**執行期**才失敗，錯誤訊息裡附一個可以點的 Console 連結。
 開發時很方便，上線就是事故——所以先建好。
 
-> 建索引很慢。這四個當初花了 **7 分鐘**。如果你之後加了新的查詢組合，
+> **2026-10-14 實測（唯讀查詢）：**
+>
+> - **原本少一個索引**：`ListPublished` 不帶 `kind` 也不帶 `tag` 時
+>   （`status == published` + `publishedAt DESC`，例如「不分類型的最新文章」）會回「缺索引」錯誤。
+>   2026-10-15 補上 `posts_published` 後實測可以查。
+>   帶 `kind`、帶 `tag`、兩個都帶本來就能跑（後者是 Firestore 自動合併兩個現有索引）。
+>   `CountPublished` 四種組合都正常。
+> - **`posts_admin` 目前沒用到**：後台列表改成在 Go 裡排序（見 `PostStore.List` 的註解），
+>   不再用 Firestore 照 `updatedAt` 排。留著不影響費用，要刪也可以。
+
+> 建索引很慢。最早的四個當初花了 **7 分鐘**。如果你之後加了新的查詢組合，
 > 記得寫進 `firestore.tf` 再 apply，不要在 Console 點一點就算了——
 > Console 建的索引不在 state 裡，下次 apply 不會知道它存在。
 
@@ -176,5 +192,5 @@ Firestore 單欄位索引是自動的，複合查詢要另外建。
 即使完全不快取，一天也要有 **3,000+ PV** 才會碰到上限。
 加上記憶體快取與 CDN 之後，實際讀取次數大概會落在每天 **幾十次**。
 
-不過還是要注意 [Firestore 三個陷阱](#) — 沒有 `limit()` 的查詢、
-在迴圈裡逐筆 `Get`、以及忘記關掉的 realtime listener。
+不過還是要注意這三種寫法，詳細見 [`FIRESTORE-GO.md`](FIRESTORE-GO.md) 的「計費：三件會讓你意外的事」：
+沒有 `Limit` 的查詢、在迴圈裡逐筆 `Get`、以及忘記關掉的 realtime listener。

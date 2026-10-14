@@ -1,6 +1,6 @@
 # 開發計畫
 
-最後更新：2026-10-13
+最後更新：2026-10-15
 
 ## 決策紀錄
 
@@ -20,7 +20,7 @@
 | 範圍 | 負責 |
 |---|---|
 | `web/templates/`、`web/static/`、`internal/view/`、`web/admin/` | Claude |
-| `cmd/server/`、`internal/{config,store,auth,markdown,cache,handler}/`、`deploy/` | cindle |
+| `cmd/server/`、`internal/{config,store,auth,markdown,cache,handler,httpx}/`、`deploy/` | cindle |
 
 接縫由三份契約定義，改動前要先對齊：
 
@@ -84,7 +84,7 @@
 |---|---|
 | `FIRESTORE.md` | 存 `markdown` 也存 `html`——用空間換 CPU |
 | `model.go` | `PostDetail` 的 `Related` / `Prev` / `Next` 都要額外查詢 |
-| `API.md` | `PATCH` 一個端點帶六個連帶動作 |
+| `API.md` | `PATCH` 一個端點帶五個連帶動作（原本六個，`tags.count` 改成現算後少一個） |
 
 ### 路由表
 
@@ -124,8 +124,10 @@
 - [ ] 2A.3　`internal/markdown` — goldmark + chroma + bluemonday，產出 `html`/`toc`/`readingMin`
       目前 `Create` 存進去的 `html` 是空的，公開頁面要等這一項
 - [ ] 2A.4　slug 產生與唯一性檢查
-      產生已完成（`makeSlug` + 單元測試）；唯一性檢查（撞號加 `-2`、回 409）還沒做
+      產生已完成（`makeSlug` + 單元測試）；唯一性檢查還沒做。規則：後端產生的撞號加 `-2`，
+      使用者填的撞號回 409（見 FIRESTORE.md「slug 規則」）
 - [ ] 2A.5　`internal/handler/public.go` — 填 `view.*VM`
+      不分類型、不分標籤的 `ListPublished` 需要的 `posts_published` 索引已在 2026-10-15 補上並實測
 - [ ] 2A.6　`internal/cache` — 記憶體快取 + `Cache-Control`
 - [x] 2A.7　`cmd/server/main.go` — 本機跑得起來
 

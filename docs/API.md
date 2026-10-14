@@ -47,7 +47,11 @@ Authorization: Bearer <firebase-id-token>
 | 403  | `forbidden`       | token 有效但 UID 不在白名單  |
 | 404  | `not_found`       | 文章不存在                   |
 | 409  | `slug_conflict`   | slug 已被使用                |
+| 413  | `invalid_request` | body 超過 1 MB               |
 | 500  | `internal`        | 其他。**訊息不要吐內部細節** |
+
+所有接收 JSON body 的端點：body 是空的、不是合法 JSON、欄位型別不對（例如 `"pinned": "yes"`）
+→ `400 invalid_request`。
 
 ---
 
@@ -143,6 +147,12 @@ Authorization: Bearer <firebase-id-token>
 → `201`，回傳與 `GET /api/posts/{id}` 相同的完整物件。
 **新建立的文章一律是 `draft`**，不能直接建成已發布。
 
+- `title` 去掉前後空白後是空的 → `400`
+- `kind` 不是 `post` / `note` → `400`
+- 有填 `slug` 但已經被別篇用掉 → `409 slug_conflict`（不會偷偷改名）；
+  沒填 `slug` 時由後端從標題產生，撞號就自動加 `-2`、`-3`
+  （**目前實作**：唯一性檢查還沒做，見 PLAN.md 2A.4）
+
 ### `PATCH /api/posts/{id}`
 
 部分更新。**只送有改動的欄位**，沒送的欄位維持原狀。
@@ -150,6 +160,23 @@ Authorization: Bearer <firebase-id-token>
 ```jsonc
 { "markdown": "改過的內容", "tagSlugs": ["go"] }
 ```
+
+可以改的欄位：`title`、`kind`、`summary`、`markdown`、`tagSlugs`、`pinned`、`cover`、`slug`。
+
+| 欄位 | 沒送 | 送了 |
+|---|---|---|
+| `title` | 不動 | 去掉前後空白後存；空的 → `400` |
+| `kind` | 不動 | 不是 `post` / `note` → `400` |
+| `summary`、`markdown` | 不動 | 照存，**可以是空字串** |
+| `tagSlugs` | 不動 | 照存；`[]` 代表清掉所有標籤 |
+| `pinned` | 不動 | 照存 |
+| `cover` | 不動 | `null` → 拿掉封面；物件 → 換封面（`url` 要以 `/images/` 開頭，`width`、`height` 要大於 0，否則 `400`） |
+| `slug` | 不動 | 跟其他文章重複 → `409 slug_conflict` |
+
+- 一個欄位都沒送（`{}`）→ `400`
+- 送了上表以外的欄位 → `400`。`status`、`publishedAt` 只能透過 `publish` 改；
+  `id`、`createdAt`、`updatedAt`、`html` 等由後端決定
+- 文章不存在 → `404`
 
 後端在這裡要做的事：
 1. 重新跑 goldmark + bluemonday → 更新 `html`
@@ -162,9 +189,13 @@ Authorization: Bearer <firebase-id-token>
 
 → `200`，回傳完整物件。
 
+> **目前實作（2026-10-13）**：上表除了 `slug` 都完成了，第 3 步也有做。
+> 送 `slug` 暫時會回 `400`（未知欄位），等唯一性檢查（PLAN.md 2A.4）做完再開放；
+> 第 1、2、5 步分別等 `internal/markdown`（2A.3）與 `internal/cache`（2A.6）。
+
 ### `DELETE /api/posts/{id}`
 
-→ `204`，無內容。
+→ `204`，無內容。文章不存在 → `404`（不是 204）。
 
 真刪除，不做軟刪除——這是個人 blog，不需要回收桶。
 （後台 UI 會有二次確認。）
@@ -177,6 +208,8 @@ Authorization: Bearer <firebase-id-token>
 
 `true` 時：`status → published`，若 `publishedAt` 為 null 則設為現在。
 `false` 時：`status → draft`，`publishedAt` **保持不變**（重新發布時日期才不會跳掉）。
+
+`publish` 必填，而且必須是布林值：沒送、`null`、字串都回 `400`。文章不存在 → `404`。
 
 → `200`，回傳完整物件。
 

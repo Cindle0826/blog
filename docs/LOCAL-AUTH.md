@@ -197,4 +197,5 @@ if os.Getenv("FIREBASE_AUTH_EMULATOR_HOST") != "" && os.Getenv("BLOG_DEV") != "1
 
 這兩件都已經完成：用 `scripts/get-uid.html` 以 Google 登入拿到真的 UID，
 並填進了 `terraform.tfvars` 的 `admin_uids`（見 [PLAN.md](PLAN.md) 的「管理帳號」）。
-之後 Phase 4.6 的後台登入頁會走同一個流程。
+後台（`web/admin`）的登入頁也是同一個流程（Phase 4.6），程式已經寫好，
+還差用真的 Google 帳號在 `npm run dev` 下實際登入一次確認。

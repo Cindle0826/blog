@@ -71,6 +71,10 @@ type Token struct {
 
 ## Middleware
 
+> 實際的程式在 [`internal/auth/middleware.go`](../internal/auth/middleware.go)，跟下面的範例有三點不同：
+> `client` 是只有 `VerifyIDToken` 的 `tokenVerifier` interface（測試時可以換成假的）、
+> 錯誤回應用 `httpx.WriteError`、log 用 `slog`。邏輯一樣。
+
 ```go
 type Authenticator struct {
     client *auth.Client
@@ -200,29 +204,41 @@ if !a.admins[tok.UID] { ... }
 ### 該分開的是橫切關注點
 
 ```go
-Recover(next)      // panic → 500
-RequestLog(next)   // 方法、路徑、狀態碼、耗時
-CORS(next)         // 只在開發模式掛
+Recover(next)   // panic → 500
+Logger(next)    // 方法、路徑、耗時
 ```
 
 差別在於**它們套用在所有路由上**，包含公開的文章頁，不是只有 `/api/*`。
+實作在 [`internal/handler/middleware.go`](../internal/handler/middleware.go)，`main.go` 這樣掛：
 
 ```go
-var chain http.Handler = mux
-chain = h.RequestLog(chain)
-chain = h.Recover(chain)        // 最外層——不然 log middleware 自己 panic 沒人接
-if cfg.Dev {
-    chain = h.CORS(chain)
-}
+var handler http.Handler = root
+handler = h.Recover(handler)
+handler = h.Logger(handler)    // Logger 在外層
 ```
 
-**更新（2026-10-04）：這個專案不需要 CORS。** 後台的 Vite dev server 會把 `/api`
-轉給 Go server，本機開發也是同源，所以上面的 `CORS(chain)` 那段可以整個拿掉。
-以下是原本的說明，留著當作「為什麼線上不要掛 CORS」的理由。
+**Logger 要包在 Recover 外面。** panic 被 Recover 接住後請求會正常結束，Logger 還記得到這筆請求；
+反過來的話，panic 會直接穿過 Logger，那筆請求不會出現在 log。
+（這份文件原本寫「Recover 放最外層」，理由是怕 Logger 自己 panic。但 Logger 只是記時間和印 log，
+幾乎不可能 panic；漏記出錯的請求反而是實際會遇到的問題。2026-10-13 改成現在的順序。）
 
-~~CORS 只在開發模式掛。~~ 本機 Vite 在 5173、Go 在 8080，跨來源所以需要；
-正式環境兩者都在同一個網域底下（Firebase Hosting 同時服務 `/admin` 與轉給
-Cloud Run 的 `/api`），同源不需要。線上掛 CORS 是白白放寬瀏覽器本來會幫你擋的限制。
+`Recover` 的細節（為什麼要有它、`recover()` 怎麼運作、它保護不到哪裡）寫在函式的註解裡。
+
+### 不需要 CORS
+
+CORS 只在「網頁」和「API」不同來源時才需要，而這個專案兩個環境都是同源：
+
+| 環境 | 網頁 | 瀏覽器打的 API |
+|---|---|---|
+| 本機 | `localhost:5173`（Vite） | `localhost:5173/api`，Vite 再轉給 `:8080` |
+| 正式 | `cindle.dev/admin` | `cindle.dev/api`，Firebase Hosting 再轉給 Cloud Run |
+
+而且 CORS 是用來**放寬**瀏覽器同源政策的，不是用來擋人的。不寫 CORS，別的網站的
+JavaScript 就讀不到你的 API 回應；curl、Postman 這類不經過瀏覽器的呼叫本來就不受 CORS 影響，
+擋它們的是 `RequireAdmin`。另外 token 放在 `Authorization` 標頭，不會像 cookie 一樣被瀏覽器
+自動附上，跨來源帶這個標頭還會先觸發預檢請求，沒有 CORS 回應就不會送出。
+
+（2026-10-04 改用 Vite proxy 後拿掉 CORS；10-13 刪掉 `middleware.go` 裡沒在用的空 `CORS` 函式。）
 
 ---
 

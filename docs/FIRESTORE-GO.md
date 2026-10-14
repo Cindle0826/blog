@@ -72,6 +72,9 @@ type Post struct {
     // struct 的這個欄位仍是舊值，要拿到真正的時間得再讀一次。
     // 好處是不依賴本機時鐘，而且多台實例寫入時間軸一致。
     // 注意它只在 Set / Add / Create 生效；Update 要顯式傳 firestore.ServerTimestamp。
+    //
+    // 不要拿 WriteResult.UpdateTime 當成這個欄位的值。ServerTimestamp 存的是伺服器
+    // 「收到請求」的時間（精確到毫秒），UpdateTime 是「commit」的時間，實測差了約 20ms。
     UpdatedAt time.Time `firestore:"updatedAt,serverTimestamp"`
 }
 
@@ -81,11 +84,14 @@ type TOCItem struct {
     Anchor string `firestore:"anchor"`
 }
 
+// Image 會直接出現在 API 回應裡（postDetail.Cover），所以 json tag 也要寫。
+// 沒寫的話 encoding/json 會輸出 "URL"、"Width" 這種大寫欄位名，跟契約對不上。
+// （解析 request 時大小寫不敏感，所以只有輸出會出錯，很容易漏掉。）
 type Image struct {
-    URL    string `firestore:"url"`
-    Alt    string `firestore:"alt"`
-    Width  int    `firestore:"width"`
-    Height int    `firestore:"height"`
+    URL    string `firestore:"url" json:"url"`
+    Alt    string `firestore:"alt" json:"alt"`
+    Width  int    `firestore:"width" json:"width"`
+    Height int    `firestore:"height" json:"height"`
 }
 ```
 
@@ -170,7 +176,7 @@ snaps, err := c.Collection("posts").
     OrderBy("publishedAt", firestore.Desc).
 ```
 
-> 以上四種查詢**都需要複合索引**，而四個索引都已經由 Terraform 建好了
+> 以上四種查詢**都需要複合索引**，已經由 Terraform 建好了（另外還有不帶 `kind` 的 `posts_published`）
 > （`infrastruct_as_code/terraform/firestore.tf`）。如果你寫了新的欄位組合，
 > Firestore 會在**執行期**回一個帶 Console 連結的錯誤——別在 Console 點一點就算了，
 > 那樣建的索引不在 state 裡，下次 apply 不會知道它存在。寫進 `firestore.tf` 再 apply。
@@ -211,9 +217,17 @@ totalPages := (total + perPage - 1) / perPage   // 無條件進位；total 為 0
 ### 建立（自動產生 ID）
 
 ```go
-ref, _, err := c.Collection("posts").Add(ctx, p)
-// ref.ID 就是新的 document ID
+ref := c.Collection("posts").NewDoc()   // 只在本機產生 ID，還沒寫入
+p.ID = ref.ID
+p.Slug = makeSlug(p.Title, ref.ID)      // 寫入前就能用到 ID
+_, err := ref.Create(ctx, &p)           // 同 ID 已存在會回 codes.AlreadyExists
 ```
+
+本專案用 `NewDoc` + `Create`，不用 `Add`：`Add` 要寫完才拿得到 ID，
+但中文標題的 slug 是 `post-` + ID 前 8 碼，寫入前就要知道。
+
+寫完要回傳完整物件的話，**再 `Get` 一次**，不要自己用 `WriteResult.UpdateTime` 補時間
+（原因見上面 `UpdatedAt` 的註解）。
 
 ### 整份覆蓋
 
@@ -233,6 +247,29 @@ _, err := c.Collection("posts").Doc(id).Update(ctx, []firestore.Update{
 
 **`API.md` 的 `PATCH` 要用這個，不要用 `Set`。** `Set` 會把沒帶到的欄位清掉——
 前端只送了 `markdown`，結果 `title`、`tagSlugs` 全部變空。
+
+`Update` 的規則（v1.26.0 原始碼確認過，後兩條實測踩過）：
+
+| 規則 | 細節 |
+|---|---|
+| 文件不存在 → `codes.NotFound` | 它預設就帶「文件必須存在」的前置條件，所以**不用先 Get** |
+| **不要**再傳 `firestore.Exists` | 會直接回錯誤 `cannot use Exists with Update`（`options.go:92`） |
+| `Path` 是 firestore tag 的名字 | 寫 `"tagSlugs"` 不是 `"TagSlugs"`。**拼錯不會報錯**，會在文件裡多出一個新欄位（實際發生過：`"updateAt"`） |
+| 同一個 `Path` 只能出現一次 | 重複的話 SDK 送出前就回錯誤：`field path [updatedAt] cannot be used in the same update as [updatedAt]` |
+| `Value: nil` → 存成 `null` | 用來表示「沒有封面」這種狀態（`to_value.go:66`） |
+| nil slice → 存成 `null`，空 slice → 存成 `[]` | 整理陣列時用 `[]string{}` 起頭，不要用 `var s []string`（`to_value.go:200`） |
+| 回傳值只有 `WriteResult` | 不含更新後的文件。要回傳完整物件就再 `Get` 一次 |
+
+PATCH 的「沒送」要跟「送了零值」分開，所以要先把有送的欄位組成 slice，再一次 `Update`：
+
+```go
+ups := []firestore.Update{{Path: "updatedAt", Value: firestore.ServerTimestamp}}
+if patch.Title != nil {
+    ups = append(ups, firestore.Update{Path: "title", Value: *patch.Title})
+}
+// ...其他欄位
+_, err := ref.Update(ctx, ups)
+```
 
 ### 刪除
 
@@ -411,6 +448,10 @@ if os.Getenv("FIRESTORE_EMULATOR_HOST") != "" && os.Getenv("BLOG_DEV") != "1" {
 | 查詢回錯誤，訊息裡有個 Console 連結 | 缺複合索引——寫進 `firestore.tf` 再 apply |
 | 交易偶爾莫名其妙失敗 | 讀寫順序反了，或交易函式裡有副作用 |
 | `PATCH` 之後其他欄位不見了 | 用了 `Set` 而不是 `Update` |
+| `Update` 回成功，但欄位沒變、文件多了一個怪欄位 | `Path` 拼錯，Firestore 當成新欄位寫入 |
+| `Update` 一定失敗：`cannot be used in the same update` | 同一個 `Path` 加了兩次 |
+| 回應的 `updatedAt` 跟之後 GET 的差幾十毫秒 | 用 `WriteResult.UpdateTime` 填回應，應該寫完再 `Get` |
+| 陣列欄位讀回來是 `null` | 寫入時是 nil slice |
 | 同一篇文章在相鄰兩頁都出現 | 少了 `OrderBy(firestore.DocumentID, ...)` 當第二排序鍵 |
 | 分頁越後面越慢越貴 | `Offset` 的正常代價，這個規模可以忽略；資料量真的很大時改用 `StartAfter` |
 | 本機正常、線上 permission denied | Cloud Run 的 `blog-server` 只有 `roles/datastore.user`，不能改索引或資料庫本身 |

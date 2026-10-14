@@ -2,3 +2,5 @@
 *.tfstate.*
 .terraform/
 terraform.tfvars
+# 02-apply.sh 只跑 plan 時留下的檔案；裡面含 terraform.tfvars 的值
+tfplan

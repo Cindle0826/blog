@@ -44,7 +44,26 @@ resource "google_firestore_index" "posts_by_kind" {
   }
 }
 
-# Same, but pinned items float to the top.
+# Latest published items regardless of kind or tag (e.g. a home page feed
+# mixing posts and notes). posts_by_kind cannot serve this: without the kind
+# filter there is no equality on "kind" to skip over. Verified missing on
+# 2026-10-14 — ListPublished with neither kind nor tag failed with an index error.
+resource "google_firestore_index" "posts_published" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "posts"
+
+  fields {
+    field_path = "status"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "publishedAt"
+    order      = "DESCENDING"
+  }
+}
+
+# Same as posts_by_kind, but pinned items float to the top.
 resource "google_firestore_index" "posts_pinned" {
   project    = var.project_id
   database   = google_firestore_database.default.name

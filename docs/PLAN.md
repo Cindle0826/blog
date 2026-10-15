@@ -124,10 +124,11 @@
       GetPublishedBySlug、ListPublished、CountPublished（公開頁，Firestore 分頁）
 - [ ] 2A.3　`internal/markdown` — goldmark + chroma + bluemonday，產出 `html`/`toc`/`readingMin`
       目前 `Create` 存進去的 `html` 是空的，公開頁面要等這一項
-- [ ] 2A.4　slug 產生與唯一性檢查
-      建立時完成（2026-10-15）：`resolveSlug` 依 slug 來源分兩條路——使用者填的撞號回 409，
-      從標題產生的撞號自動加 `-2`、`-3`（截短保持 60 字內）。已用真的 Firestore 實測。
-      還差 PATCH 改 slug（見 4.3 的表）
+- [x] 2A.4　slug 產生與唯一性檢查
+      建立時（2026-10-15）：`resolveSlug` 依 slug 來源分兩條路——使用者填的撞號回 409，
+      從標題產生的撞號自動加 `-2`、`-3`（截短保持 60 字內）。
+      修改時（2026-10-15）：只有從沒發布過的文章能改（`publishedAt` 是 null），
+      發布過的回 409 `slug_locked`，所以不需要 redirect。兩者都已用真的 Firestore 實測
 - [ ] 2A.5　`internal/handler/public.go` — 填 `view.*VM`
       不分類型、不分標籤的 `ListPublished` 需要的 `posts_published` 索引已在 2026-10-15 補上並實測
 - [ ] 2A.6　`internal/cache` — 記憶體快取 + `Cache-Control`
@@ -179,8 +180,8 @@
 | `GET /api/posts` | ✅ | ✅ | 5、5b、5c | 分頁在 Go 做，原因寫在 `PostStore.List` 的註解 |
 | `DELETE /api/posts/{id}` | ✅ | ✅ | 18、19 | 用 `firestore.Exists` 讓不存在的文件回 NotFound，不然 Firestore 會當成功 |
 | `POST /api/posts/{id}/publish` | ✅ | ✅ | 7、8 | 退回草稿不清 `publishedAt`；寫完重新 Get 再回傳，見下方說明 |
-| `PATCH /api/posts/{id}` | 🟡 | 🟡 | 6 | 一般欄位（title、kind、summary、markdown、tagSlugs、pinned、cover）完成並實測。還差：改 slug（**下一步**，目前送 slug 回 400）、重算 html/toc（等 2A.3）、失效快取（等 2A.6） |
-| `GET /api/tags` | ⬜ | ⬜ | 12 | |
+| `PATCH /api/posts/{id}` | 🟡 | 🟡 | 6 | 一般欄位（title、kind、summary、markdown、tagSlugs、pinned、cover）完成並實測。slug 可改（只限沒發布過的）。還差：重算 html/toc（等 2A.3）、失效快取（等 2A.6） |
+| `GET /api/tags` | ⬜ | ⬜ | 12 | **下一支**。count 用聚合查詢現算；要先決定 `tags/{slug}` 文件由誰建立 |
 | `PUT /api/tags/{slug}` | ⬜ | ⬜ | 13 | |
 | `POST /api/uploads` | ⬜ | ⬜ | 14 | 4.4，需要 GCS 與縮圖 |
 | `GET /images/{path...}` | ⬜ | ⬜ | 15、16 | 4.4b，公開路由，不經過 `RequireAdmin` |
@@ -254,7 +255,7 @@ Phase 0、1、2B 完成。Phase 4 的登入與 middleware、後台 React（4.5�
 皆已用真的 Firestore 實測。handler 外層掛了 `Recover`，panic 會回 500 而不是切斷連線。2026-10-07 Go 升到 1.27.1，govulncheck 0 個可呼叫漏洞。
 
 下一步：cindle 依 4.3 的表繼續寫後台 API，建議順序是
-PATCH 改 slug → 標籤 → 上傳與圖片 → 快取失效。
+標籤 → 上傳與圖片 → 快取失效。
 `internal/markdown`（2A.3）做完後，回頭補 PATCH 的 html/toc 重算。
 `tags.count` 改用聚合查詢即時算，寫入的 API 都不用維護它（見 4.3 表下方的說明）。
 

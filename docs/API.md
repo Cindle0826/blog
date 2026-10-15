@@ -47,6 +47,7 @@ Authorization: Bearer <firebase-id-token>
 | 403  | `forbidden`       | token 有效但 UID 不在白名單  |
 | 404  | `not_found`       | 文章不存在                   |
 | 409  | `slug_conflict`   | slug 已被使用                |
+| 409  | `slug_locked`     | 發布過的文章不能改 slug      |
 | 413  | `invalid_request` | body 超過 1 MB               |
 | 500  | `internal`        | 其他。**訊息不要吐內部細節** |
 
@@ -151,7 +152,6 @@ Authorization: Bearer <firebase-id-token>
 - `kind` 不是 `post` / `note` → `400`
 - 有填 `slug` 但已經被別篇用掉 → `409 slug_conflict`（不會偷偷改名）；
   沒填 `slug` 時由後端從標題產生，撞號就自動加 `-2`、`-3`
-  （**目前實作**：唯一性檢查還沒做，見 PLAN.md 2A.4）
 
 ### `PATCH /api/posts/{id}`
 
@@ -171,7 +171,7 @@ Authorization: Bearer <firebase-id-token>
 | `tagSlugs` | 不動 | 照存；`[]` 代表清掉所有標籤 |
 | `pinned` | 不動 | 照存 |
 | `cover` | 不動 | `null` → 拿掉封面；物件 → 換封面（`url` 要以 `/images/` 開頭，`width`、`height` 要大於 0，否則 `400`） |
-| `slug` | 不動 | 跟其他文章重複 → `409 slug_conflict` |
+| `slug` | 不動 | 格式不合法 → `400`；文章**發布過**（`publishedAt` 不是 null）→ `409 slug_locked`；跟其他文章重複 → `409 slug_conflict`；跟原本一樣 → 不算修改 |
 
 - 一個欄位都沒送（`{}`）→ `400`
 - 送了上表以外的欄位 → `400`。`status`、`publishedAt` 只能透過 `publish` 改；
@@ -182,15 +182,14 @@ Authorization: Bearer <firebase-id-token>
 1. 重新跑 goldmark + bluemonday → 更新 `html`
 2. 重算 `toc`、`readingMin`、`hasCode`
 3. 更新 `updatedAt`
-4. `slug` 有變 → 寫一筆 `redirects`
+4. ~~`slug` 有變 → 寫一筆 `redirects`~~ 不需要：只有從沒發布過的文章能改 slug，舊網址從沒公開過（2026-10-15 決定）
 5. **失效快取**（見下）
 
 `tags.count` 不用維護，它是讀取時現算的（見 `GET /api/tags`）。
 
 → `200`，回傳完整物件。
 
-> **目前實作（2026-10-13）**：上表除了 `slug` 都完成了，第 3 步也有做。
-> 送 `slug` 暫時會回 `400`（未知欄位），等唯一性檢查（PLAN.md 2A.4）做完再開放；
+> **目前實作（2026-10-15）**：上表全部完成，第 3 步也有做。
 > 第 1、2、5 步分別等 `internal/markdown`（2A.3）與 `internal/cache`（2A.6）。
 
 ### `DELETE /api/posts/{id}`

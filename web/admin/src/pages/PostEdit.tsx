@@ -202,7 +202,9 @@ export function PostEdit() {
   }
 
   const published = post?.status === 'published'
-  const slugChanged = !isNew && published && form.slug.trim() !== base.slug
+  // 發布過的文章網址就固定了（見 FIRESTORE.md「slug 規則」）：網址一改，被收錄的排名和
+  // 外部連結都會斷掉。退回草稿也不會解鎖，因為那個網址已經公開過。
+  const slugLocked = post?.publishedAt != null
 
   return (
     <form className="editor" onSubmit={(e) => { e.preventDefault(); void save() }}>
@@ -216,9 +218,12 @@ export function PostEdit() {
           <span className="slug-input">
             <span className="slug-input__prefix">/posts/</span>
             <input className="input input--mono" value={form.slug} onChange={(e) => set('slug', e.target.value)}
-              placeholder={isNew ? '留空會從標題產生' : ''} spellCheck={false} aria-label="網址" />
+              placeholder={isNew ? '留空會從標題產生' : ''} spellCheck={false} aria-label="網址"
+              readOnly={slugLocked} aria-describedby={slugLocked ? 'slug-locked' : undefined} />
           </span>
-          {slugChanged && <span className="field__hint">已發布的文章改網址，舊網址會 301 轉到新網址。</span>}
+          {slugLocked && (
+            <span className="field__hint field__hint--note" id="slug-locked">發布過的文章不能改網址，舊連結才不會失效。</span>
+          )}
         </label>
 
         <div className="field">

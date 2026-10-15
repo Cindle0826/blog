@@ -252,6 +252,7 @@ code, .mono { font-family: var(--font-code); font-size: 0.86em; }
 }
 .input::placeholder { color: var(--fg-subtle); }
 .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.input[readonly] { background: var(--bg-sunken); color: var(--fg-muted); }
 
 .input--mono { font-family: var(--font-code); font-size: 0.875rem; }
 .input--area { resize: vertical; line-height: 1.7; }
@@ -438,6 +439,7 @@ code, .mono { font-family: var(--font-code); font-size: 0.86em; }
 .fields .field { margin-bottom: 0; }
 .field__label { font-size: 0.8rem; font-weight: 500; color: var(--fg-muted); }
 .field__hint { font-size: 0.8rem; color: var(--accent); }
+.field__hint--note { color: var(--fg-subtle); }
 
 .field--check {
   flex-direction: row;

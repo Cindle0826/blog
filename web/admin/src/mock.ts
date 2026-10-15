@@ -98,8 +98,11 @@ export async function handle<T>(method: string, path: string, body?: unknown): P
     if (method === 'GET') return found as T
     if (method === 'PATCH') {
       const patch = body as Partial<PostDetail>
+      if (patch.slug !== undefined && patch.slug !== found.slug && found.publishedAt !== null) {
+        throw new ApiError(409, 'slug_locked', '發布過的文章不能修改網址')
+      }
       if (patch.slug && posts.some((p) => p.slug === patch.slug && p.id !== id)) {
-        throw new ApiError(409, 'slug_conflict', `slug「${patch.slug}」已經被使用`)
+        throw new ApiError(409, 'slug_conflict', `網址「${patch.slug}」已經被其他文章使用`)
       }
       Object.assign(found, patch, { updatedAt: new Date().toISOString() })
       return found as T

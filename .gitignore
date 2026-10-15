@@ -27,6 +27,8 @@ firebase-debug.log
 # Node（後台）
 node_modules/
 web/admin/dist/
+# tsc -b 產生的增量建置快取
+*.tsbuildinfo
 .vite/
 
 # 產生物

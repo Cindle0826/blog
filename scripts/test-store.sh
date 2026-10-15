@@ -13,6 +13,10 @@
 
 set -euo pipefail
 
+# macOS 內建的 /bin/bash 是 3.2：在中文 locale 下，它會把緊接在變數後面的中文字
+# 當成變數名的一部分（"$PORT，" 會去找叫 "PORT，" 的變數）。變數後面接中文時
+# 一律寫成 ${PORT}。
+
 PORT="${FIRESTORE_TEST_PORT:-8090}"
 HOST="127.0.0.1:${PORT}"
 
@@ -35,8 +39,8 @@ if ! gcloud components list --filter="id:cloud-firestore-emulator" --format="val
   exit 1
 fi
 
-LOG="$(mktemp "${TMPDIR:-/tmp}/firestore-emulator.XXXXXX")"
-echo "啟動模擬器（Java：$(basename "$JAVA_HOME_FOR_EMULATOR")，port $PORT，log：$LOG）"
+LOG="$(mktemp "${TMPDIR:-/tmp/}firestore-emulator.XXXXXX")"
+echo "啟動模擬器（Java：$(basename "${JAVA_HOME_FOR_EMULATOR}")，port ${PORT}，log：${LOG}）"
 PATH="$JAVA_HOME_FOR_EMULATOR/bin:$PATH" JAVA_HOME="$JAVA_HOME_FOR_EMULATOR" \
   gcloud emulators firestore start --host-port="$HOST" >"$LOG" 2>&1 &
 EMULATOR_PID=$!

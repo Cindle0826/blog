@@ -97,11 +97,15 @@ func (p *PostStore) Create(ctx context.Context, post Post) (*Post, error) {
 		post.Kind = "post"
 
 	}
-	if len(post.Slug) == 0 {
-		post.Slug = makeSlug(post.Title, post.ID)
+
+	newSlug, err := p.resolveSlug(ctx, post.Slug, post.Title, post.ID)
+	if err != nil {
+		return nil, err
 	}
 
-	_, err := ref.Create(ctx, &post)
+	post.Slug = newSlug
+
+	_, err = ref.Create(ctx, &post)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +133,55 @@ func (p *PostStore) Get(ctx context.Context, id string) (*Post, error) {
 	}
 	post.ID = snap.Ref.ID
 	return &post, nil
+}
+
+func (p *PostStore) resolveSlug(ctx context.Context, wanted, title, id string) (string, error) {
+	if len(wanted) != 0 {
+		taken, err := p.slugTaken(ctx, wanted)
+		if err != nil {
+			return "", err
+		}
+
+		if taken {
+			return "", ErrSlugConflict
+		}
+		return wanted, nil
+	}
+
+	const maxSlugTries = 20
+
+	base := makeSlug(title, id)
+	for n := 1; n <= maxSlugTries; n++ {
+		candidate := base
+		if n > 1 {
+			candidate = withSuffix(base, n) // hello-world-2、-3…
+		}
+		taken, err := p.slugTaken(ctx, candidate)
+		if err != nil {
+			return "", err // 查詢失敗，不要猜，直接回錯誤
+		}
+		if !taken {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("slug %q 試了 %d 次都被用過", base, maxSlugTries)
+}
+
+func (p *PostStore) slugTaken(ctx context.Context, slug string) (bool, error) {
+	iter := p.client.Collection(postsCollection).
+		Where("slug", "==", slug).
+		Limit(1).
+		Documents(ctx)
+
+	defer iter.Stop()
+
+	_, err := iter.Next()
+	if errors.Is(err, iterator.Done) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (p *PostStore) GetPublishedBySlug(ctx context.Context, slug string) (*Post, error) {

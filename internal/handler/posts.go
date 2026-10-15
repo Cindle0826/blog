@@ -133,6 +133,10 @@ func (p *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	cp, err := p.repo.Create(r.Context(), post)
 	if err != nil {
+		if errors.Is(err, store.ErrSlugConflict) {
+			httpx.WriteError(w, http.StatusConflict, "slug_conflict", fmt.Sprintf("網址「%s」已經被其他文章使用", req.Slug))
+			return
+		}
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "建立文章失敗，請查看詳細Log")
 		httpx.WriteErrLog("伺服器回應失敗", "Create", "[posts_handler] errMsg", err)
 		return

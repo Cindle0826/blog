@@ -2,10 +2,13 @@ package store
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
 const maxSlugLen = 60
+
+var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 // makeSlug 由標題產生 URL 用的 slug；標題裡沒有任何英數字元時，
 // 退回 "post-" + id 前 8 碼（轉成小寫）。
@@ -33,8 +36,15 @@ func makeSlug(title, id string) string {
 	return slug
 }
 
-var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
-
 func ValidSlug(s string) bool {
 	return len(s) <= maxSlugLen && slugPattern.MatchString(s)
+}
+
+func withSuffix(base string, n int) string {
+	suffix := "-" + strconv.Itoa(n)
+	keep := maxSlugLen - len(suffix)
+	if len(base) > keep {
+		base = strings.TrimRight(base[:keep], "-") // 截在連字號上的話要去掉
+	}
+	return base + suffix
 }

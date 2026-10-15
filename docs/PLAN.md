@@ -14,6 +14,7 @@
 | Blog vs 知識庫 | 同一個 collection，用 `kind` 欄位區分；標籤共用 |
 | 留言 | 暫不做，全部完成後再評估 giscus |
 | 優先序 | SEO > 成本 0 元 > 技術棧偏好 |
+| 開發順序 | 先寫完後台 API，再做 markdown、公開頁面與部署；上線後遇到問題再看 log（2026-10-15） |
 
 ## 責任分界
 
@@ -124,8 +125,9 @@
 - [ ] 2A.3　`internal/markdown` — goldmark + chroma + bluemonday，產出 `html`/`toc`/`readingMin`
       目前 `Create` 存進去的 `html` 是空的，公開頁面要等這一項
 - [ ] 2A.4　slug 產生與唯一性檢查
-      產生已完成（`makeSlug` + 單元測試）；唯一性檢查還沒做。規則：後端產生的撞號加 `-2`，
-      使用者填的撞號回 409（見 FIRESTORE.md「slug 規則」）
+      建立時完成（2026-10-15）：`resolveSlug` 依 slug 來源分兩條路——使用者填的撞號回 409，
+      從標題產生的撞號自動加 `-2`、`-3`（截短保持 60 字內）。已用真的 Firestore 實測。
+      還差 PATCH 改 slug（見 4.3 的表）
 - [ ] 2A.5　`internal/handler/public.go` — 填 `view.*VM`
       不分類型、不分標籤的 `ListPublished` 需要的 `posts_published` 索引已在 2026-10-15 補上並實測
 - [ ] 2A.6　`internal/cache` — 記憶體快取 + `Cache-Control`
@@ -172,12 +174,12 @@
 
 | 端點 | store | handler | 測試 | 備註 |
 |---|---|---|---|---|
-| `POST /api/posts` | ✅ | ✅ | 3、11 | 撞號回 409（測試 10）要等 2A.4，**下一步**做這個 |
+| `POST /api/posts` | ✅ | ✅ | 3、10、11 | slug 撞號回 409，自動產生的加 `-2` |
 | `GET /api/posts/{id}` | ✅ | ✅ | 4、9 | |
 | `GET /api/posts` | ✅ | ✅ | 5、5b、5c | 分頁在 Go 做，原因寫在 `PostStore.List` 的註解 |
 | `DELETE /api/posts/{id}` | ✅ | ✅ | 18、19 | 用 `firestore.Exists` 讓不存在的文件回 NotFound，不然 Firestore 會當成功 |
 | `POST /api/posts/{id}/publish` | ✅ | ✅ | 7、8 | 退回草稿不清 `publishedAt`；寫完重新 Get 再回傳，見下方說明 |
-| `PATCH /api/posts/{id}` | 🟡 | 🟡 | 6 | 一般欄位（title、kind、summary、markdown、tagSlugs、pinned、cover）完成並實測。還差：改 slug（等 2A.4，目前送 slug 回 400）、重算 html/toc（等 2A.3）、失效快取（等 2A.6） |
+| `PATCH /api/posts/{id}` | 🟡 | 🟡 | 6 | 一般欄位（title、kind、summary、markdown、tagSlugs、pinned、cover）完成並實測。還差：改 slug（**下一步**，目前送 slug 回 400）、重算 html/toc（等 2A.3）、失效快取（等 2A.6） |
 | `GET /api/tags` | ⬜ | ⬜ | 12 | |
 | `PUT /api/tags/{slug}` | ⬜ | ⬜ | 13 | |
 | `POST /api/uploads` | ⬜ | ⬜ | 14 | 4.4，需要 GCS 與縮圖 |
@@ -252,7 +254,7 @@ Phase 0、1、2B 完成。Phase 4 的登入與 middleware、後台 React（4.5�
 皆已用真的 Firestore 實測。handler 外層掛了 `Recover`，panic 會回 500 而不是切斷連線。2026-10-07 Go 升到 1.27.1，govulncheck 0 個可呼叫漏洞。
 
 下一步：cindle 依 4.3 的表繼續寫後台 API，建議順序是
-slug 唯一性（同時讓 POST 回 409、PATCH 支援改 slug 與寫 redirects）→ 標籤 → 上傳與圖片 → 快取失效。
+PATCH 改 slug → 標籤 → 上傳與圖片 → 快取失效。
 `internal/markdown`（2A.3）做完後，回頭補 PATCH 的 html/toc 重算。
 `tags.count` 改用聚合查詢即時算，寫入的 API 都不用維護它（見 4.3 表下方的說明）。
 

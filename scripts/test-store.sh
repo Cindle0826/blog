@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/zsh
 #
 # 啟動 Firestore 模擬器、跑 internal/store 的測試，跑完自動關掉模擬器。
 #
@@ -13,20 +13,20 @@
 
 set -euo pipefail
 
-# macOS 內建的 /bin/bash 是 3.2：在中文 locale 下，它會把緊接在變數後面的中文字
-# 當成變數名的一部分（"$PORT，" 會去找叫 "PORT，" 的變數）。變數後面接中文時
-# 一律寫成 ${PORT}。
+# 用 zsh 不用 bash：macOS 內建的 /bin/bash 停在 3.2，在中文 locale 下會把緊接在
+# 變數後面的中文字當成變數名的一部分（"$PORT，" 會去找叫 "PORT，" 的變數）。
+# zsh 是 macOS 內建的新版 shell。變數後面接中文時還是一律寫成 ${PORT}，在哪個 shell 都正確。
 
 PORT="${FIRESTORE_TEST_PORT:-8090}"
 HOST="127.0.0.1:${PORT}"
 
 # 找 SDKMAN 裡 21 以上的 Java，挑版本最新的那個
 JAVA_HOME_FOR_EMULATOR=""
-for dir in "$HOME"/.sdkman/candidates/java/*/; do
+for dir in "$HOME"/.sdkman/candidates/java/*(N/); do # (N/)：只要資料夾，沒有符合的就是空清單
   name="$(basename "$dir")"
   major="${name%%.*}"
   if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 21 )); then
-    JAVA_HOME_FOR_EMULATOR="${dir%/}"
+    JAVA_HOME_FOR_EMULATOR="$dir"
   fi
 done
 if [[ -z "$JAVA_HOME_FOR_EMULATOR" ]]; then
@@ -42,9 +42,8 @@ fi
 LOG="$(mktemp "${TMPDIR:-/tmp/}firestore-emulator.XXXXXX")"
 echo "啟動模擬器（Java：$(basename "${JAVA_HOME_FOR_EMULATOR}")，port ${PORT}，log：${LOG}）"
 PATH="$JAVA_HOME_FOR_EMULATOR/bin:$PATH" JAVA_HOME="$JAVA_HOME_FOR_EMULATOR" \
-  gcloud emulators firestore start --host-port="$HOST" >"$LOG" 2>&1 &
+  gcloud emulators firestore start --host-port="$HOST" >"$LOG" 2>&1 &! # &!：背景執行並脫離 shell 的工作管理
 EMULATOR_PID=$!
-disown "$EMULATOR_PID" # 結束時是我們自己關的，不要讓 bash 印出 "Terminated"
 
 cleanup() {
   # gcloud 會再開一個 java 子行程，兩個都要關

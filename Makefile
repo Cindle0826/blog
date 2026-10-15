@@ -5,6 +5,9 @@
 
 ARGS ?=
 
+# make 預設用 /bin/sh 執行每一行指令；改用 zsh，跟終端機一致
+SHELL := /bin/zsh
+
 .DEFAULT_GOAL := help
 .PHONY: help test test-handler test-slug test-store
 

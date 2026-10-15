@@ -47,6 +47,11 @@ cleanup() {
   pkill -P "$EMULATOR_PID" 2>/dev/null || true
   kill "$EMULATOR_PID" 2>/dev/null || true
   pkill -f "cloud-firestore-emulator.*--port=${PORT}" 2>/dev/null || true
+  # java 收到訊號後要一兩秒才真的結束。等它放掉 port，連續執行兩次才不會撞在一起
+  for _ in $(seq 1 20); do
+    pgrep -f "cloud-firestore-emulator.*--port=${PORT}" >/dev/null || return 0
+    sleep 0.5
+  done
 }
 trap cleanup EXIT
 

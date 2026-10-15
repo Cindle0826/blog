@@ -406,8 +406,9 @@ Firestore 按「文件」計費，不按欄位。`Select` 的價值是省頻寬�
 `internal/store` 的測試跑在 **Firestore 模擬器**上，不碰正式資料庫：
 
 ```bash
-./scripts/test-store.sh             # 啟動模擬器 → 跑測試 → 關掉模擬器
-./scripts/test-store.sh -run Slug   # 其他參數原樣傳給 go test
+make test-store                     # 啟動模擬器 → 跑測試 → 關掉模擬器（實際執行 scripts/test-store.sh）
+make test-store ARGS="-run Slug"    # 其他參數用 ARGS 傳給 go test
+make                                # 列出所有測試指令（test、test-handler、test-slug、test-store）
 ```
 
 需要兩樣東西（2026-10-15 已裝好）：

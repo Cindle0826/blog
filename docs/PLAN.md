@@ -260,7 +260,7 @@ Phase 0、1、2B 完成。Phase 4 的登入與 middleware、後台 React（4.5�
 `tags.count` 改用聚合查詢即時算，寫入的 API 都不用維護它（見 4.3 表下方的說明）。
 
 自動化測試（2026-10-15）：`internal/handler` 用假的 store 測每個端點的驗證、錯誤對應與回應格式；
-`internal/store` 跑在 Firestore 模擬器上（`./scripts/test-store.sh`，沒有模擬器時自動略過）。
+`internal/store` 跑在 Firestore 模擬器上（沒有模擬器時自動略過）。`make` 列出所有測試指令。
 把這陣子實際踩過的 17 個 bug 一個個放回去，每個都會讓測試失敗。新的 API 寫完時，照同樣的方式補測試。
 
 待確認：4.6 的真實 Google 登入還沒在後台實際走過一次（`npm run dev` + Go server）。

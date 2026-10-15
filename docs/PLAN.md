@@ -177,7 +177,7 @@
 |---|---|---|---|---|
 | `POST /api/posts` | ✅ | ✅ | 3、10、11 | slug 撞號回 409，自動產生的加 `-2` |
 | `GET /api/posts/{id}` | ✅ | ✅ | 4、9 | |
-| `GET /api/posts` | ✅ | ✅ | 5、5b、5c | 分頁在 Go 做，原因寫在 `PostStore.List` 的註解。**已知 bug**：`kind=all` 回 400（契約允許），`TestListKindAll` 目前是 skip |
+| `GET /api/posts` | ✅ | ✅ | 5、5b、5c | 分頁在 Go 做，原因寫在 `PostStore.List` 的註解。`status`、`kind` 傳 `all` 都當成不過濾 |
 | `DELETE /api/posts/{id}` | ✅ | ✅ | 18、19 | 用 `firestore.Exists` 讓不存在的文件回 NotFound，不然 Firestore 會當成功 |
 | `POST /api/posts/{id}/publish` | ✅ | ✅ | 7、8 | 退回草稿不清 `publishedAt`；寫完重新 Get 再回傳，見下方說明 |
 | `PATCH /api/posts/{id}` | 🟡 | 🟡 | 6 | 一般欄位（title、kind、summary、markdown、tagSlugs、pinned、cover）完成並實測。slug 可改（只限沒發布過的）。還差：重算 html/toc（等 2A.3）、失效快取（等 2A.6） |

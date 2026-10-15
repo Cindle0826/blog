@@ -201,9 +201,13 @@ func (p *PostHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	kind := q.Get("kind")
 	kind = strings.TrimSpace(kind)
-	if len(kind) != 0 && kind != "post" && kind != "note" {
+	if len(kind) != 0 && kind != "post" && kind != "note" && kind != "all" {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "kind 狀態不存在")
 		return
+	}
+
+	if kind == "all" {
+		kind = ""
 	}
 
 	page, ok := parsePositive(q.Get("page"), 1)

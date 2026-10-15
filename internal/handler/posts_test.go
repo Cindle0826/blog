@@ -622,20 +622,42 @@ func TestListValidation(t *testing.T) {
 	}
 }
 
-// API.md：kind 的合法值是 post|note|all，預設 all。
+// API.md：kind 的合法值是 post|note|all，預設 all。all 跟沒帶一樣，代表不過濾。
+//
+// 2026-10-15 寫測試時發現 List 對 status=all 有轉成空字串，kind=all 卻回 400。
+// 後台前端在值是 all 時不會送參數，所以沒人踩到，但直接打 API 就會遇到。
 func TestListKindAll(t *testing.T) {
-	// 2026-10-15 寫測試時發現：List 對 status=all 有轉成空字串，kind=all 卻回 400。
-	// 後台前端不會送 kind=all，所以目前沒人踩到。修好 handler 後拿掉這行。
-	t.Skip("已知 bug：kind=all 回 400，見 API.md 的 GET /api/posts")
+	tests := []struct {
+		name  string
+		query string
+		want  listArgs
+	}{
+		{"只有 kind=all", "?kind=all", listArgs{page: 1, perPage: 50}},
+		{"kind=all 加 status=all", "?kind=all&status=all", listArgs{page: 1, perPage: 50}},
+		{"kind=all 加 status=draft", "?kind=all&status=draft", listArgs{status: "draft", page: 1, perPage: 50}},
+		{"kind=all 加搜尋與分頁", "?kind=all&search=go&page=2&limit=10", listArgs{search: "go", page: 2, perPage: 10}},
+		{"kind=all 前後有空白", "?kind=%20all%20", listArgs{page: 1, perPage: 50}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeStore{}
+			rec := do(t, f, "GET", "/posts"+tt.query, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("kind=all 是契約允許的值，狀態碼 = %d；body = %s", rec.Code, rec.Body.String())
+			}
+			if f.listArgs != tt.want {
+				t.Errorf("傳給 store 的參數 = %+v，預期 %+v（kind=all 要當成不過濾，傳空字串）", f.listArgs, tt.want)
+			}
+		})
+	}
 
-	f := &fakeStore{}
-	rec := do(t, f, "GET", "/posts?kind=all", "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("kind=all 是契約允許的值，狀態碼 = %d；body = %s", rec.Code, rec.Body.String())
-	}
-	if f.listArgs.kind != "" {
-		t.Errorf("kind=all 應該當成不過濾，傳給 store 的 kind = %q", f.listArgs.kind)
-	}
+	// all 只能是小寫，跟 post、note 一樣
+	t.Run("kind=ALL 不合法", func(t *testing.T) {
+		f := &fakeStore{}
+		rec := do(t, f, "GET", "/posts?kind=ALL", "")
+		assertError(t, rec, http.StatusBadRequest, "invalid_request")
+		assertNotCalled(t, f)
+	})
 }
 
 func TestListResponse(t *testing.T) {

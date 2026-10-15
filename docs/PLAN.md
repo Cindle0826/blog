@@ -177,7 +177,7 @@
 |---|---|---|---|---|
 | `POST /api/posts` | ✅ | ✅ | 3、10、11 | slug 撞號回 409，自動產生的加 `-2` |
 | `GET /api/posts/{id}` | ✅ | ✅ | 4、9 | |
-| `GET /api/posts` | ✅ | ✅ | 5、5b、5c | 分頁在 Go 做，原因寫在 `PostStore.List` 的註解 |
+| `GET /api/posts` | ✅ | ✅ | 5、5b、5c | 分頁在 Go 做，原因寫在 `PostStore.List` 的註解。**已知 bug**：`kind=all` 回 400（契約允許），`TestListKindAll` 目前是 skip |
 | `DELETE /api/posts/{id}` | ✅ | ✅ | 18、19 | 用 `firestore.Exists` 讓不存在的文件回 NotFound，不然 Firestore 會當成功 |
 | `POST /api/posts/{id}/publish` | ✅ | ✅ | 7、8 | 退回草稿不清 `publishedAt`；寫完重新 Get 再回傳，見下方說明 |
 | `PATCH /api/posts/{id}` | 🟡 | 🟡 | 6 | 一般欄位（title、kind、summary、markdown、tagSlugs、pinned、cover）完成並實測。slug 可改（只限沒發布過的）。還差：重算 html/toc（等 2A.3）、失效快取（等 2A.6） |
@@ -258,6 +258,10 @@ Phase 0、1、2B 完成。Phase 4 的登入與 middleware、後台 React（4.5�
 標籤 → 上傳與圖片 → 快取失效。
 `internal/markdown`（2A.3）做完後，回頭補 PATCH 的 html/toc 重算。
 `tags.count` 改用聚合查詢即時算，寫入的 API 都不用維護它（見 4.3 表下方的說明）。
+
+自動化測試（2026-10-15）：`internal/handler` 用假的 store 測每個端點的驗證、錯誤對應與回應格式；
+`internal/store` 跑在 Firestore 模擬器上（`./scripts/test-store.sh`，沒有模擬器時自動略過）。
+把這陣子實際踩過的 17 個 bug 一個個放回去，每個都會讓測試失敗。新的 API 寫完時，照同樣的方式補測試。
 
 待確認：4.6 的真實 Google 登入還沒在後台實際走過一次（`npm run dev` + Go server）。
 

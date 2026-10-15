@@ -403,39 +403,35 @@ Firestore 按「文件」計費，不按欄位。`Select` 的價值是省頻寬�
 
 ## 本機測試
 
-Firestore 也有模擬器，跟 Auth 模擬器同一套工具：
+`internal/store` 的測試跑在 **Firestore 模擬器**上，不碰正式資料庫：
 
 ```bash
-firebase emulators:start --only firestore --project cindle-blog
+./scripts/test-store.sh             # 啟動模擬器 → 跑測試 → 關掉模擬器
+./scripts/test-store.sh -run Slug   # 其他參數原樣傳給 go test
 ```
 
-```bash
-# .env
-FIRESTORE_EMULATOR_HOST=localhost:8080
-```
+需要兩樣東西（2026-10-15 已裝好）：
 
-⚠️ **模擬器預設佔 8080，跟你的 server 撞。** 在 `firebase.json` 改掉：
+| | 安裝方式 | 為什麼 |
+|---|---|---|
+| 模擬器 | `gcloud components install cloud-firestore-emulator` | gcloud 的元件，不用另外裝 firebase CLI |
+| Java 25 | `sdk install java 25.0.4.1+1-tem`（問要不要設成預設時回答 n） | 模擬器要 Java 21 以上，gcloud 577 已經在警告 21 會停止支援。腳本只在自己執行時用 25，預設的 Java 17 不受影響 |
 
-```jsonc
-{
-  "emulators": {
-    "auth":      { "port": 9099 },
-    "firestore": { "port": 8090 },
-    "ui":        { "enabled": true, "port": 4000 }
-  }
-}
-```
+**沒有模擬器時，這些測試會自動略過**，`go test ./...` 一樣會通過。
+判斷依據是 `FIRESTORE_EMULATOR_HOST` 有沒有設：Firestore client 看到它就會改連模擬器，
+程式碼一行都不用改；沒設的話測試直接略過，不可能連到正式環境。專案 ID 也用模擬器專用的 `demo-` 前綴。
 
-`FIRESTORE_EMULATOR_HOST` 是 **Firestore client 自己會讀的變數**，設了就自動改連模擬器，
-程式碼一行不用改。跟 Auth 模擬器一樣，記得加保險：
+每個測試開始前會清空模擬器（`DELETE /emulator/v1/projects/{id}/databases/(default)/documents`，
+模擬器專用的 API），所以測試之間互不影響，資料存在記憶體，關掉就沒了。
 
-```go
-if os.Getenv("FIRESTORE_EMULATOR_HOST") != "" && os.Getenv("BLOG_DEV") != "1" {
-    log.Fatal("偵測到 Firestore 模擬器設定但不在開發模式，拒絕啟動")
-}
-```
+測不到的東西：**模擬器不檢查複合索引**。正式環境缺索引會失敗的查詢，在模擬器上照樣成功，
+索引要靠 `firestore.tf` 管理。
 
-模擬器的資料存在記憶體，重啟就清空。這是好事——測試環境本來就該可拋棄。
+另外，`ServerTimestamp` 只精確到毫秒，模擬器又很快，「寫兩次、比較 updatedAt 有沒有前進」
+的測試要在兩次寫入之間等幾毫秒（測試裡的 `nextMillisecond()`），不然偶爾會失敗。
+
+`internal/handler` 的測試不需要模擬器：它用一個假的 store（實作 handler 自己定義的
+`postStore` interface），記下 handler 傳了什麼、指定 store 要回什麼。
 
 ---
 

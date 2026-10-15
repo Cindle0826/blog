@@ -70,6 +70,7 @@ type updatePostRequest struct {
 	Title    *string         `json:"title"`
 	Kind     *string         `json:"kind"`
 	Markdown *string         `json:"markdown"`
+	Slug     *string         `json:"slug"`
 	TagSlugs *[]string       `json:"tagSlugs"`
 	Summary  *string         `json:"summary"`
 	Cover    json.RawMessage `json:"cover"`
@@ -345,6 +346,10 @@ func (p *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "Kind 型別必須為 post 或是 note")
 		return
 	}
+	if req.Slug != nil && !store.ValidSlug(strings.TrimSpace(*req.Slug)) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "slug 只能用小寫英數與連字號，不能超過 60 字")
+		return
+	}
 
 	patch, err := req.toPatch()
 	if err != nil {
@@ -359,13 +364,21 @@ func (p *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	up, err := p.repo.Update(r.Context(), id, patch)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
 			httpx.WriteError(w, http.StatusNotFound, "not_found", "查無此文章")
 			return
+		case errors.Is(err, store.ErrSlugLocked):
+			httpx.WriteError(w, http.StatusConflict, "slug_locked", "發布過的文章不能修改網址")
+			return
+		case errors.Is(err, store.ErrSlugConflict):
+			httpx.WriteError(w, http.StatusConflict, "slug_conflict", fmt.Sprintf("網址 「%s」已經被其他文章使用", *req.Slug))
+			return
+		default:
+			httpx.WriteError(w, http.StatusInternalServerError, "internal", "更新文章失敗詳情請查看 Log")
+			httpx.WriteErrLog("伺服器回應失敗", "Update", "[posts_handler] errMsg", err)
+			return
 		}
-		httpx.WriteError(w, http.StatusInternalServerError, "internal", "更新文章失敗詳情請查看 Log")
-		httpx.WriteErrLog("伺服器回應失敗", "Update", "[posts_handler] errMsg", err)
-		return
 	}
 	// 轉換 response
 	pr := toPostDetail(up)
@@ -469,7 +482,6 @@ func parsePositive(s string, def int) (int, bool) {
 
 func (r updatePostRequest) toPatch() (store.PostPatch, error) {
 	patch := store.PostPatch{
-		Title:    r.Title,
 		Kind:     r.Kind,
 		Summary:  r.Summary,
 		Markdown: r.Markdown,
@@ -497,6 +509,11 @@ func (r updatePostRequest) toPatch() (store.PostPatch, error) {
 	if r.Title != nil {
 		t := strings.TrimSpace(*r.Title)
 		patch.Title = &t
+	}
+
+	if r.Slug != nil {
+		s := strings.TrimSpace(*r.Slug)
+		patch.Slug = &s
 	}
 
 	return patch, nil

@@ -75,6 +75,7 @@ type PostPatch struct {
 	Kind        *string
 	Summary     *string
 	Markdown    *string
+	Slug        *string
 	TagSlugs    *[]string
 	Pinned      *bool
 	Cover       *Image
@@ -413,6 +414,25 @@ func (p *PostStore) Update(ctx context.Context, id string, patch PostPatch) (*Po
 	}
 	if patch.Markdown != nil {
 		ups = append(ups, firestore.Update{Path: "markdown", Value: *patch.Markdown})
+	}
+	if patch.Slug != nil {
+		cur, err := p.Get(ctx, id)
+		if err != nil {
+			return nil, err // 文章不存在的 ErrNotFound 也會從這裡傳回去
+		}
+		if *patch.Slug != cur.Slug { // 跟原本一樣就跳過，不算修改
+			if cur.PublishedAt != nil {
+				return nil, ErrSlugLocked
+			}
+			taken, err := p.slugTaken(ctx, *patch.Slug)
+			if err != nil {
+				return nil, err
+			}
+			if taken {
+				return nil, ErrSlugConflict
+			}
+			ups = append(ups, firestore.Update{Path: "slug", Value: *patch.Slug})
+		}
 	}
 	if patch.TagSlugs != nil {
 		ups = append(ups, firestore.Update{Path: "tagSlugs", Value: *patch.TagSlugs})

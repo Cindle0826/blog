@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listTags, renameTag, type Tag } from '../api'
 import { ErrorNotice } from '../components/ErrorNotice'
+import { NewTagForm } from '../components/TagPicker'
 import { PageHead } from '../components/Layout'
 
 export function Tags() {
   const [tags, setTags] = useState<Tag[] | null>(null)
   const [error, setError] = useState<unknown>(null)
+  const [adding, setAdding] = useState(false)
 
   const load = useCallback(async () => {
     setError(null)
@@ -22,8 +24,18 @@ export function Tags() {
     <>
       <PageHead title="標籤" />
       <p className="lede">
-        標籤在寫文章時直接輸入就會建立。這裡只能改顯示名稱，slug 是網址的一部分，建立後不能改。
+        文章只能選已經建立的標籤，可以在這裡建立，也可以在編輯文章時直接新增。
+        slug 是網址的一部分，建立後不能改，這裡只能改顯示名稱。
       </p>
+
+      <div className="tags-toolbar">
+        {adding ? (
+          <NewTagForm onCancel={() => setAdding(false)}
+            onCreated={async () => { setAdding(false); await load() }} />
+        ) : (
+          <button type="button" className="btn" onClick={() => setAdding(true)}>新增標籤</button>
+        )}
+      </div>
 
       {error ? (
         <ErrorNotice error={error} onRetry={() => void load()} />

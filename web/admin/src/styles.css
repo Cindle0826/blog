@@ -361,6 +361,36 @@ code, .mono { font-family: var(--font-code); font-size: 0.86em; }
 .table--static tr:hover .input--line { border-bottom-color: var(--border-strong); }
 .table--static .input--line:focus { border-bottom-color: var(--accent); }
 
+/* 標籤選擇：一排勾選框，跟「置頂」同一種樣子。選中的字用強調色，不加底色或外框。 */
+.tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  padding-top: 0.35rem;
+}
+.tag-picker__state { padding-top: 0.35rem; font-size: 0.875rem; }
+.tag-picker__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.tag-picker__item input { accent-color: var(--accent); }
+.tag-picker__item:has(input:checked) { color: var(--accent); }
+.tag-picker__item--missing,
+.tag-picker__item--missing:has(input:checked) { color: var(--danger); }
+.tag-picker__add { font-size: 0.875rem; }
+
+.tag-new { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-3); }
+.tag-new__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.tag-new__slug { width: 12rem; }
+.tag-new__name { width: 14rem; }
+.tag-new .notice { margin: 0; }
+
+.tags-toolbar { margin-bottom: var(--sp-5); }
+
 /* ── 通知 ─────────────────────────────────────────────────── */
 
 .notice {

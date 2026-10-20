@@ -4,6 +4,7 @@
 // 只在開發模式被動態 import，正式 build 不會包含這個檔案。
 
 import { ApiError, type PostDetail, type PostInput, type PostPage, type Tag } from './api'
+import { isValidSlug } from './format'
 
 const now = Date.now()
 const iso = (daysAgo: number) => new Date(now - daysAgo * 86_400_000).toISOString()
@@ -39,16 +40,22 @@ function post(id: string, slug: string, kind: 'post' | 'note', status: 'draft' |
 }
 
 const tags: Tag[] = [
-  { slug: 'go', name: 'Go', count: 2 },
-  { slug: 'gcp', name: 'GCP', count: 2 },
-  { slug: 'seo', name: 'SEO', count: 1 },
   { slug: 'bash', name: 'bash', count: 1 },
   { slug: 'css', name: 'CSS', count: 1 },
+  { slug: 'gcp', name: 'GCP', count: 2 },
+  { slug: 'go', name: 'Go', count: 2 },
+  { slug: 'seo', name: 'SEO', count: 1 },
 ]
 
 const delay = () => new Promise((r) => setTimeout(r, 180 + Math.random() * 220))
 
 const notFound = () => new ApiError(404, 'not_found', '找不到這篇文章')
+
+// 契約：文章只能用已經建立的標籤
+function checkTags(slugs: string[] | undefined) {
+  const missing = (slugs ?? []).filter((s) => !tags.some((t) => t.slug === s))
+  if (missing.length > 0) throw new ApiError(400, 'invalid_request', `標籤不存在：${missing.join('、')}`)
+}
 
 function summary({ markdown: _m, cover: _c, createdAt: _cr, ...rest }: PostDetail) {
   return rest
@@ -81,6 +88,7 @@ export async function handle<T>(method: string, path: string, body?: unknown): P
   if (resource === 'posts' && !id && method === 'POST') {
     const input = body as PostInput
     if (!input.title?.trim()) throw new ApiError(400, 'invalid_request', 'Title 必須填寫')
+    checkTags(input.tagSlugs)
     const created: PostDetail = {
       ...post(`mock${++seq}AbCdEfGhIjKlMn`, input.slug || `post-mock${seq}`, input.kind ?? 'post',
         'draft', input.title, input.tagSlugs ?? [], input.pinned ?? false, null, 0),
@@ -104,6 +112,7 @@ export async function handle<T>(method: string, path: string, body?: unknown): P
       if (patch.slug && posts.some((p) => p.slug === patch.slug && p.id !== id)) {
         throw new ApiError(409, 'slug_conflict', `網址「${patch.slug}」已經被其他文章使用`)
       }
+      checkTags(patch.tagSlugs)
       Object.assign(found, patch, { updatedAt: new Date().toISOString() })
       return found as T
     }
@@ -123,6 +132,17 @@ export async function handle<T>(method: string, path: string, body?: unknown): P
   }
 
   if (resource === 'tags' && !id && method === 'GET') return { items: tags } as T
+
+  if (resource === 'tags' && !id && method === 'POST') {
+    const { slug, name } = body as { slug: string; name: string }
+    if (!isValidSlug(slug)) throw new ApiError(400, 'invalid_request', 'slug 只能用小寫英數與連字號，不能超過 60 字')
+    if (!name?.trim()) throw new ApiError(400, 'invalid_request', 'name 必須填寫')
+    if (tags.some((t) => t.slug === slug)) throw new ApiError(409, 'slug_conflict', `標籤「${slug}」已經存在`)
+    const tag: Tag = { slug, name: name.trim(), count: 0 }
+    tags.push(tag)
+    tags.sort((a, b) => a.slug.localeCompare(b.slug)) // Firestore 依 document ID 排序
+    return tag as T
+  }
 
   if (resource === 'tags' && id && method === 'PUT') {
     const tag = tags.find((t) => t.slug === id)

@@ -181,6 +181,10 @@ export async function listTags(): Promise<Tag[]> {
   return res.items ?? []
 }
 
+export async function createTag(slug: string, name: string): Promise<Tag> {
+  return request<Tag>('POST', '/api/tags', { slug, name })
+}
+
 export async function renameTag(slug: string, name: string): Promise<Tag> {
   return request<Tag>('PUT', `/api/tags/${encodeURIComponent(slug)}`, { name })
 }

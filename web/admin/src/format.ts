@@ -12,12 +12,7 @@ export function formatTime(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** 逗號、頓號、空白都能分隔，統一成小寫的 slug 陣列 */
-export function parseTags(input: string): string[] {
-  const seen = new Set<string>()
-  for (const raw of input.split(/[,，、\s]+/)) {
-    const t = raw.trim().toLowerCase()
-    if (t) seen.add(t)
-  }
-  return [...seen]
+/** 跟後端 store.ValidSlug 同一條規則：小寫英數與連字號，最多 60 字 */
+export function isValidSlug(s: string): boolean {
+  return s.length <= 60 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s)
 }

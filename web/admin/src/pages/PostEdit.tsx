@@ -5,26 +5,27 @@ import {
   type PostDetail, type PostKind, type PostPatch,
 } from '../api'
 import { ErrorNotice } from '../components/ErrorNotice'
-import { formatDateTime, formatTime, parseTags } from '../format'
+import { TagPicker } from '../components/TagPicker'
+import { formatDateTime, formatTime } from '../format'
 import { KIND_LABEL, STATUS_LABEL } from './PostList'
 
 interface Form {
   title: string
   slug: string
   kind: PostKind
-  tags: string
+  tags: string[]
   summary: string
   markdown: string
   pinned: boolean
 }
 
-const EMPTY: Form = { title: '', slug: '', kind: 'post', tags: '', summary: '', markdown: '', pinned: false }
+const EMPTY: Form = { title: '', slug: '', kind: 'post', tags: [], summary: '', markdown: '', pinned: false }
 
 const toForm = (p: PostDetail): Form => ({
   title: p.title,
   slug: p.slug,
   kind: p.kind,
-  tags: p.tagSlugs.join(', '),
+  tags: p.tagSlugs,
   summary: p.summary,
   markdown: p.markdown,
   pinned: p.pinned,
@@ -39,8 +40,7 @@ function diff(form: Form, base: Form): PostPatch {
   if (form.summary !== base.summary) patch.summary = form.summary
   if (form.markdown !== base.markdown) patch.markdown = form.markdown
   if (form.pinned !== base.pinned) patch.pinned = form.pinned
-  const tags = parseTags(form.tags)
-  if (tags.join(',') !== parseTags(base.tags).join(',')) patch.tagSlugs = tags
+  if (form.tags.join(',') !== base.tags.join(',')) patch.tagSlugs = form.tags
   return patch
 }
 
@@ -96,7 +96,7 @@ export function PostEdit() {
           title: form.title.trim(),
           kind: form.kind,
           slug: form.slug.trim(),
-          tagSlugs: parseTags(form.tags),
+          tagSlugs: form.tags,
           summary: form.summary,
           markdown: form.markdown,
           pinned: form.pinned,
@@ -238,11 +238,10 @@ export function PostEdit() {
           </div>
         </div>
 
-        <label className="field field--wide">
-          <span className="field__label">標籤</span>
-          <input className="input input--mono" value={form.tags} onChange={(e) => set('tags', e.target.value)}
-            placeholder="go, gcp" spellCheck={false} aria-label="標籤（以逗號分隔）" />
-        </label>
+        <div className="field field--wide">
+          <span className="field__label" id="tags-label">標籤</span>
+          <TagPicker value={form.tags} onChange={(v) => set('tags', v)} labelId="tags-label" />
+        </div>
 
         <label className="field field--check">
           <input type="checkbox" checked={form.pinned} onChange={(e) => set('pinned', e.target.checked)}

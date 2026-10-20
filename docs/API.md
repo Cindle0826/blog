@@ -4,7 +4,7 @@
 > 前端會完全照這份寫，所以你實作時**回應格式要一字不差**。
 >
 > **這份契約有可執行版本：[`../http_tests/api_test.http`](../http_tests/api_test.http)**
-> （47 個測試 / 70 條斷言）。實作一個 handler 就跑一次，它會直接告訴你形狀對不對。
+> （57 個測試 / 85 條斷言）。實作一個 handler 就跑一次，它會直接告訴你形狀對不對。
 
 - Base path：`/api`
 - 格式：JSON（`Content-Type: application/json`）
@@ -45,8 +45,8 @@ Authorization: Bearer <firebase-id-token>
 | 400  | `invalid_request` | 欄位缺漏或格式錯             |
 | 401  | `unauthorized`    | 沒帶 token、token 過期或無效 |
 | 403  | `forbidden`       | token 有效但 UID 不在白名單  |
-| 404  | `not_found`       | 文章不存在                   |
-| 409  | `slug_conflict`   | slug 已被使用                |
+| 404  | `not_found`       | 文章或標籤不存在             |
+| 409  | `slug_conflict`   | slug 已被使用（文章或標籤）  |
 | 409  | `slug_locked`     | 發布過的文章不能改 slug      |
 | 413  | `invalid_request` | body 超過 1 MB               |
 | 500  | `internal`        | 其他。**訊息不要吐內部細節** |
@@ -152,6 +152,7 @@ Authorization: Bearer <firebase-id-token>
 - `kind` 不是 `post` / `note` → `400`
 - 有填 `slug` 但已經被別篇用掉 → `409 slug_conflict`（不會偷偷改名）；
   沒填 `slug` 時由後端從標題產生，撞號就自動加 `-2`、`-3`
+- `tagSlugs` 裡有不存在的標籤 → `400`（見下方「標籤」）
 
 ### `PATCH /api/posts/{id}`
 
@@ -168,7 +169,7 @@ Authorization: Bearer <firebase-id-token>
 | `title` | 不動 | 去掉前後空白後存；空的 → `400` |
 | `kind` | 不動 | 不是 `post` / `note` → `400` |
 | `summary`、`markdown` | 不動 | 照存，**可以是空字串** |
-| `tagSlugs` | 不動 | 照存；`[]` 代表清掉所有標籤 |
+| `tagSlugs` | 不動 | 照存；`[]` 代表清掉所有標籤；裡面有不存在的標籤 → `400` |
 | `pinned` | 不動 | 照存 |
 | `cover` | 不動 | `null` → 拿掉封面；物件 → 換封面（`url` 要以 `/images/` 開頭，`width`、`height` 要大於 0，否則 `400`） |
 | `slug` | 不動 | 格式不合法 → `400`；文章**發布過**（`publishedAt` 不是 null）→ `409 slug_locked`；跟其他文章重複 → `409 slug_conflict`；跟原本一樣 → 不算修改 |
@@ -216,6 +217,14 @@ Authorization: Bearer <firebase-id-token>
 
 ## 標籤
 
+**標籤要先建立才能用**（2026-10-20 決定）。`tags/{slug}` 只有 `POST /api/tags` 會建立，
+文章的 `tagSlugs` 只能放已經存在的標籤。後台編輯文章時可以就地新增標籤，
+建立完重新拉一次列表、勾起來，再存文章。
+
+`POST /api/posts` 與 `PATCH /api/posts/{id}` 有送 `tagSlugs` 時，後端要檢查每一個都存在：
+用 `GetAll` 一次讀回這些 `tags/{slug}`，有任何一份 `!Exists()` 就回 `400`，
+訊息列出不存在的 slug（例如「標籤不存在：rust、wasm」）。`[]` 不用查。
+
 ### `GET /api/tags`
 
 ```jsonc
@@ -225,13 +234,42 @@ Authorization: Bearer <firebase-id-token>
 `count` 是**已發布**文章數，不含草稿。不存在資料庫裡，每次請求用聚合查詢現算，
 所以永遠跟實際文章一致。
 
+### `POST /api/tags`
+
+```jsonc
+{ "slug": "rust", "name": "Rust" }
+```
+
+→ `201`，回傳跟列表裡一樣的物件：
+
+```jsonc
+{ "slug": "rust", "name": "Rust", "count": 0 }
+```
+
+- `slug` 必填，格式跟文章 slug 一樣（小寫英數與連字號，最多 60 字），不合法 → `400`
+- `name` 去掉前後空白後是空的 → `400`
+- 送了這兩個以外的欄位 → `400`
+- slug 已經存在 → `409 slug_conflict`。用 `Create` 寫，文件已存在時它會回
+  `AlreadyExists`，不用先查一次
+- 新文件的 `order` 填 `0`
+
 ### `PUT /api/tags/{slug}`
 
 ```jsonc
 { "name": "Go" }
 ```
 
-只能改顯示名稱。slug 是 document ID，不可改。
+只能改顯示名稱。slug 是 document ID，也被文章的 `tagSlugs` 引用，不可改。
+
+- `name` 去掉前後空白後是空的 → `400`
+- 標籤不存在 → `404`。**不會順便建立**，建立一律走 `POST /api/tags`
+
+→ `200`，回傳跟列表裡一樣的物件（含 `count`）。
+
+### 刪除標籤
+
+目前沒有這支。之後要做的話：還有任何文章（包括草稿）用到這個標籤 → `409`，
+不要從文章裡偷偷拿掉。
 
 ---
 

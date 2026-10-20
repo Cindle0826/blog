@@ -10,6 +10,7 @@
 #    （沒有的話：GoLand 跑「Run get-uid.html」，會自動打開瀏覽器）
 # 3. 從上往下跑。第 3 則會建立一篇測試文章，後面的請求靠它串起來，
 #    最後一則會刪掉。中途失敗的話重跑一次第 3 則就好。
+#    第 3 則的文章帶了標籤 go，標籤要先存在，所以 2b 會先建立它（已經有就略過）。
 #
 # 「Run all requests in file」可以一次跑完整個流程。
 #
@@ -70,6 +71,26 @@ Authorization: Bearer {{otherUserIdToken}}
         client.assert(code === "forbidden",
             "401/unauthorized 是「你是誰」的問題，403/forbidden 是「你能做什麼」的問題，" +
             "兩者不該混用。得到 " + code);
+    });
+%}
+
+
+### 2b. 準備：標籤 go 要存在
+### ═══════════════════════════════════════════════════════════
+#
+# 文章只能用已經建立的標籤（API.md「標籤」）。第一次跑是 201，之後都是 409，兩種都算過。
+
+# @no-log
+POST {{apiBase}}/api/tags
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "slug": "go", "name": "Go" }
+
+> {%
+    client.test("201 或 409（已經存在）", function() {
+        client.assert(response.status === 201 || response.status === 409,
+            "得到 " + response.status + "。這則失敗的話，第 3 則會因為標籤不存在而 400");
     });
 %}
 
@@ -404,6 +425,29 @@ Content-Type: application/json
 
 
 ### ═══════════════════════════════════════════════════════════
+### 11b. 用了不存在的標籤 → 400
+### ═══════════════════════════════════════════════════════════
+# @no-log
+PATCH {{apiBase}}/api/posts/{{postId}}
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "tagSlugs": ["go", "no-such-tag-{{$timestamp}}"] }
+
+> {%
+    client.test("回 400", function() {
+        client.assert(response.status === 400,
+            "得到 " + response.status + "。標籤要先用 POST /api/tags 建立，" +
+            "文章不能引用不存在的標籤");
+    });
+    client.test("code 是 invalid_request", function() {
+        const code = (response.body.error || {}).code;
+        client.assert(code === "invalid_request", "得到 " + code);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
 ### 12. 標籤列表
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -427,6 +471,78 @@ Authorization: Bearer {{idToken}}
 
 
 ### ═══════════════════════════════════════════════════════════
+### 12b. 建立標籤 → 201
+### ═══════════════════════════════════════════════════════════
+#
+# 還沒有刪除標籤的 API，所以用固定的 slug，只會留下一個測試標籤。
+# 第一次跑是 201，之後都是 409（12c 專門測 409）。
+
+# @no-log
+POST {{apiBase}}/api/tags
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "slug": "contract-test", "name": "契約測試" }
+
+> {%
+    client.test("201，或之前跑過所以 409", function() {
+        client.assert(response.status === 201 || response.status === 409,
+            "得到 " + response.status);
+    });
+
+    if (response.status === 201) {
+        client.test("回傳 slug / name / count", function() {
+            const t = response.body;
+            client.assert(t.slug === "contract-test", "slug 應為 contract-test，得到 " + t.slug);
+            client.assert(t.name === "契約測試", "name 應為「契約測試」，得到 " + t.name);
+            client.assert(t.count === 0, "新標籤沒有文章，count 應為 0，得到 " + t.count);
+        });
+    }
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 12c. 重複建立標籤 → 409
+### ═══════════════════════════════════════════════════════════
+# @no-log
+POST {{apiBase}}/api/tags
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "slug": "contract-test", "name": "改掉的名字" }
+
+> {%
+    client.test("回 409，不是覆蓋", function() {
+        client.assert(response.status === 409,
+            "得到 " + response.status + "。如果是 201，代表既有標籤的名稱被蓋掉了");
+    });
+    client.test("code 是 slug_conflict", function() {
+        const code = (response.body.error || {}).code;
+        client.assert(code === "slug_conflict", "得到 " + code);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 12d. 標籤 slug 不合法 → 400
+### ═══════════════════════════════════════════════════════════
+# @no-log
+POST {{apiBase}}/api/tags
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "slug": "Not Valid", "name": "x" }
+
+> {%
+    client.test("回 400", function() {
+        client.assert(response.status === 400, "得到 " + response.status);
+        const code = (response.body.error || {}).code;
+        client.assert(code === "invalid_request", "得到 " + code);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
 ### 13. 改標籤顯示名稱
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -439,6 +555,30 @@ Content-Type: application/json
 > {%
     client.test("回 200", function() {
         client.assert(response.status === 200, "得到 " + response.status);
+    });
+    client.test("回傳 slug / name / count", function() {
+        const t = response.body;
+        client.assert(t.slug === "go", "slug 應為 go，得到 " + t.slug);
+        client.assert(t.name === "Go", "name 應為 Go，得到 " + t.name);
+        client.assert(typeof t.count === "number", "count 應為數字，得到 " + t.count);
+    });
+%}
+
+
+### ═══════════════════════════════════════════════════════════
+### 13b. 改不存在的標籤 → 404，不會順便建立
+### ═══════════════════════════════════════════════════════════
+# @no-log
+PUT {{apiBase}}/api/tags/no-such-tag-{{$timestamp}}
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "name": "x" }
+
+> {%
+    client.test("回 404", function() {
+        client.assert(response.status === 404,
+            "得到 " + response.status + "。如果是 200，代表 PUT 建立了新標籤；建立要走 POST /api/tags");
     });
 %}
 

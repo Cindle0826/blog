@@ -108,6 +108,10 @@ Firestore 用 **Native mode**（不是 Datastore mode）。
 
 document ID 直接用 slug，方便直接 `Get`。
 
+**只有 `POST /api/tags` 會建立這裡的文件**（2026-10-20 決定）。文章的 `tagSlugs` 只能引用
+已經存在的標籤，寫入時由後端檢查（見 [`API.md`](API.md)「標籤」）。slug 被文章引用，
+所以建立後不能改，只能改 `name`。
+
 ```jsonc
 {
   "name":  "Kubernetes",   // 顯示名稱，大小寫由你決定

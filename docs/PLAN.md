@@ -1,6 +1,6 @@
 # 開發計畫
 
-最後更新：2026-10-15
+最後更新：2026-10-20
 
 ## 決策紀錄
 
@@ -15,6 +15,7 @@
 | 留言 | 暫不做，全部完成後再評估 giscus |
 | 優先序 | SEO > 成本 0 元 > 技術棧偏好 |
 | 開發順序 | 先寫完後台 API，再做 markdown、公開頁面與部署；上線後遇到問題再看 log（2026-10-15） |
+| 標籤 | 有自己的 collection，要先用 `POST /api/tags` 建立；文章的 `tagSlugs` 只能引用已存在的標籤，後台編輯文章時可就地新增（2026-10-20） |
 
 ## 責任分界
 
@@ -181,8 +182,10 @@
 | `DELETE /api/posts/{id}` | ✅ | ✅ | 18、19 | 用 `firestore.Exists` 讓不存在的文件回 NotFound，不然 Firestore 會當成功 |
 | `POST /api/posts/{id}/publish` | ✅ | ✅ | 7、8 | 退回草稿不清 `publishedAt`；寫完重新 Get 再回傳，見下方說明 |
 | `PATCH /api/posts/{id}` | 🟡 | 🟡 | 6 | 一般欄位（title、kind、summary、markdown、tagSlugs、pinned、cover）完成並實測。slug 可改（只限沒發布過的）。還差：重算 html/toc（等 2A.3）、失效快取（等 2A.6） |
-| `GET /api/tags` | ⬜ | ⬜ | 12 | **下一支**。count 用聚合查詢現算；要先決定 `tags/{slug}` 文件由誰建立 |
-| `PUT /api/tags/{slug}` | ⬜ | ⬜ | 13 | |
+| `GET /api/tags` | ⬜ | ⬜ | 12 | **下一支**。count 用聚合查詢現算 |
+| `POST /api/tags` | ⬜ | ⬜ | 2b、12b、12c、12d | 2026-10-20 新增。用 `Create`，已存在回 409 |
+| `PUT /api/tags/{slug}` | ⬜ | ⬜ | 13、13b | 不存在回 404，不會建立 |
+| POST／PATCH 文章檢查 `tagSlugs` | ⬜ | ⬜ | 11b | 2026-10-20 新增。`GetAll` 查標籤，有不存在的回 400 |
 | `POST /api/uploads` | ⬜ | ⬜ | 14 | 4.4，需要 GCS 與縮圖 |
 | `GET /images/{path...}` | ⬜ | ⬜ | 15、16 | 4.4b，公開路由，不經過 `RequireAdmin` |
 | `POST /api/cache/purge` | — | ⬜ | 17 | 依賴 2A.6 `internal/cache` |
@@ -255,7 +258,8 @@ Phase 0、1、2B 完成。Phase 4 的登入與 middleware、後台 React（4.5�
 皆已用真的 Firestore 實測。handler 外層掛了 `Recover`，panic 會回 500 而不是切斷連線。2026-10-07 Go 升到 1.27.1，govulncheck 0 個可呼叫漏洞。
 
 下一步：cindle 依 4.3 的表繼續寫後台 API，建議順序是
-標籤 → 上傳與圖片 → 快取失效。
+標籤 → 上傳與圖片 → 快取失效。標籤這組先寫 `POST /api/tags`，再加文章的 `tagSlugs` 檢查：
+順序反過來的話，測試第 3 則的文章會因為標籤 go 還建不出來而 400。
 `internal/markdown`（2A.3）做完後，回頭補 PATCH 的 html/toc 重算。
 `tags.count` 改用聚合查詢即時算，寫入的 API 都不用維護它（見 4.3 表下方的說明）。
 

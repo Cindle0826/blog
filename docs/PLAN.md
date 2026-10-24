@@ -255,7 +255,7 @@
 Phase 0、1、2B 完成。Phase 4 的登入與 middleware、後台 React（4.5、4.7）完成。
 後台 API 完成 5 支：`POST /api/posts`、`GET /api/posts/{id}`、`GET /api/posts`、`DELETE /api/posts/{id}`、
 `POST /api/posts/{id}/publish`；`PATCH /api/posts/{id}` 完成一般欄位（連帶動作待補）。
-皆已用真的 Firestore 實測。handler 外層掛了 `Recover`，panic 會回 500 而不是切斷連線。2026-10-24 Go 升到 1.27.3（修掉 1.27.1 的 13 個可呼叫標準庫漏洞）；govulncheck 還剩 `golang.org/x/net` v0.59.0 的 5 個 HTTP/2 漏洞，要升到 v0.60.0。
+皆已用真的 Firestore 實測。handler 外層掛了 `Recover`，panic 會回 500 而不是切斷連線。2026-10-24 Go 升到 1.27.3（修掉 1.27.1 的 13 個可呼叫標準庫漏洞）、`golang.org/x/net` 升到 v0.60.0（修掉同一批 HTTP/2 漏洞），govulncheck 0 個可呼叫漏洞。
 
 下一步：cindle 依 4.3 的表繼續寫後台 API，建議順序是
 標籤 → 上傳與圖片 → 快取失效。標籤這組先寫 `POST /api/tags`，再加文章的 `tagSlugs` 檢查：

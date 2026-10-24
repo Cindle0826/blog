@@ -1,6 +1,6 @@
 module cindle.dev/blog
 
-go 1.27.1
+go 1.27.3
 
 require (
 	cloud.google.com/go/firestore v1.26.0

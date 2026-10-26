@@ -61,6 +61,10 @@ type fakeStore struct {
 	updatePatch store.PostPatch
 	updateRet   *store.Post
 	updateErr   error
+
+	// 標籤檢查（fakeTagGetter 讀這兩個欄位）
+	missingTags []string // 這些 slug 查不到，Get 回 ErrNotFound；其他都存在
+	tagErr      error    // 不是 nil 的話，每次 Get 都回這個錯誤
 }
 
 type listArgs struct {
@@ -115,13 +119,47 @@ func (f *fakeStore) Update(_ context.Context, id string, patch store.PostPatch) 
 	return f.updateRet, f.updateErr
 }
 
+// fakeTagGetter 實作 tagGetter（真的是 TagStore.Get）。
+// 它跟 fakeStore 共用同一份 calls，才看得出「先查標籤、再寫入」的順序，
+// assertNotCalled 也會一併檢查驗證失敗時有沒有去查標籤。
+// 沒指定 missingTags 時所有標籤都存在，既有的測試帶 tagSlugs 也能照常通過。
+// 格式不合法的 slug 跟真的 TagStore.Get 一樣回 ErrNotFound（檢查放在 store 裡）。
+type fakeTagGetter struct {
+	f *fakeStore
+}
+
+func (g fakeTagGetter) Get(_ context.Context, slug string) (*store.Tag, error) {
+	g.f.calls = append(g.f.calls, "GetTag:"+slug)
+	if !store.ValidSlug(slug) {
+		return nil, store.ErrNotFound
+	}
+	if g.f.tagErr != nil {
+		return nil, g.f.tagErr
+	}
+	if slices.Contains(g.f.missingTags, slug) {
+		return nil, store.ErrNotFound
+	}
+	return &store.Tag{Slug: slug, Name: slug}, nil
+}
+
+// tagGets 回傳 calls 裡查過的標籤，依呼叫順序。
+func tagGets(calls []string) []string {
+	var out []string
+	for _, c := range calls {
+		if slug, ok := strings.CutPrefix(c, "GetTag:"); ok {
+			out = append(out, slug)
+		}
+	}
+	return out
+}
+
 // ── 測試工具 ───────────────────────────────────────────────
 
 const testID = "aBc123XyZ9kLmN0pQrSt"
 
 // newMux 用跟 cmd/server/main.go 一樣的路由，r.PathValue("id") 才拿得到值。
 func newMux(f *fakeStore) *http.ServeMux {
-	h := NewPostHandler(f)
+	h := NewPostHandler(f, fakeTagGetter{f})
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /posts", h.Create)
 	mux.HandleFunc("GET /posts/{id}", h.Get)
@@ -899,6 +937,169 @@ func TestUpdateTagSlugs(t *testing.T) {
 			t.Errorf("tagSlugs:null 應該當成沒送，得到 %v", *f.updatePatch.TagSlugs)
 		}
 	})
+}
+
+// ── 文章的 tagSlugs 只能用已經存在的標籤（API.md「標籤」）────
+
+func TestCreateChecksTags(t *testing.T) {
+	f := &fakeStore{}
+	rec := do(t, f, "POST", "/posts", `{"title":"x","tagSlugs":["go","gcp"]}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("狀態碼 = %d；body = %s", rec.Code, rec.Body.String())
+	}
+	// 每個標籤都查過，而且先查標籤、再寫入
+	want := []string{"GetTag:go", "GetTag:gcp", "Create"}
+	if !slices.Equal(f.calls, want) {
+		t.Errorf("呼叫順序 = %v\n預期      %v", f.calls, want)
+	}
+}
+
+func TestUpdateChecksTags(t *testing.T) {
+	f := &fakeStore{updateRet: samplePost()}
+	rec := do(t, f, "PATCH", "/posts/"+testID, `{"tagSlugs":["go"]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("狀態碼 = %d；body = %s", rec.Code, rec.Body.String())
+	}
+	want := []string{"GetTag:go", "Update"}
+	if !slices.Equal(f.calls, want) {
+		t.Errorf("呼叫順序 = %v\n預期      %v", f.calls, want)
+	}
+}
+
+// 沒有標籤要檢查時不查 Firestore：契約寫「[] 不用查」，沒送或 null 也一樣。
+// 這幾種都要正常建立／更新，不能因為「沒有標籤」就回錯誤。
+func TestTagCheckSkippedWithoutTags(t *testing.T) {
+	tests := []struct {
+		name, method, target, body string
+		wantStatus                 int
+	}{
+		{"POST 沒送 tagSlugs", "POST", "/posts", `{"title":"x"}`, http.StatusCreated},
+		{"POST tagSlugs 是 []", "POST", "/posts", `{"title":"x","tagSlugs":[]}`, http.StatusCreated},
+		{"POST tagSlugs 是 null", "POST", "/posts", `{"title":"x","tagSlugs":null}`, http.StatusCreated},
+		{"PATCH 沒送 tagSlugs", "PATCH", "/posts/" + testID, `{"title":"x"}`, http.StatusOK},
+		{"PATCH tagSlugs 是 []", "PATCH", "/posts/" + testID, `{"tagSlugs":[]}`, http.StatusOK},
+		{"PATCH tagSlugs 是 null", "PATCH", "/posts/" + testID, `{"tagSlugs":null,"title":"x"}`, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeStore{updateRet: samplePost()}
+			rec := do(t, f, tt.method, tt.target, tt.body)
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("狀態碼 = %d，預期 %d；body = %s", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if got := tagGets(f.calls); len(got) != 0 {
+				t.Errorf("沒有標籤要檢查，卻查了 %v", got)
+			}
+		})
+	}
+}
+
+func TestUnknownTagsRejected(t *testing.T) {
+	tests := []struct {
+		name, method, target, body string
+	}{
+		{"POST", "POST", "/posts", `{"title":"x","tagSlugs":["go","rust","wasm"]}`},
+		{"PATCH", "PATCH", "/posts/" + testID, `{"tagSlugs":["go","rust","wasm"]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeStore{missingTags: []string{"rust", "wasm"}, updateRet: samplePost()}
+			rec := do(t, f, tt.method, tt.target, tt.body)
+			msg := assertError(t, rec, http.StatusBadRequest, "invalid_request")
+			// 訊息要列出「每一個」不存在的標籤，不能查到第一個就停，
+			// 不然使用者改掉 rust 再存一次，才會發現 wasm 也不存在
+			for _, slug := range []string{"rust", "wasm"} {
+				if !strings.Contains(msg, slug) {
+					t.Errorf("訊息 %q 應該列出不存在的標籤 %s", msg, slug)
+				}
+			}
+			if strings.Contains(msg, "go") {
+				t.Errorf("訊息 %q 不該包含存在的標籤 go", msg)
+			}
+			// 標籤不存在就不能寫入
+			if slices.Contains(f.calls, "Create") || slices.Contains(f.calls, "Update") {
+				t.Errorf("呼叫 = %v，標籤不存在時不能寫入", f.calls)
+			}
+		})
+	}
+}
+
+func TestUnknownTagListedOnce(t *testing.T) {
+	f := &fakeStore{missingTags: []string{"rust"}}
+	rec := do(t, f, "POST", "/posts", `{"title":"x","tagSlugs":["rust","go","rust"]}`)
+	msg := assertError(t, rec, http.StatusBadRequest, "invalid_request")
+	if n := strings.Count(msg, "rust"); n != 1 {
+		t.Errorf("訊息 %q 裡 rust 出現 %d 次，重複送的標籤只要列一次", msg, n)
+	}
+}
+
+// tagSlugs 直接來自請求 body，格式可能不合法。TagStore.Get 對這種 slug 回 ErrNotFound
+// （格式檢查放在 store，見 tags_emulator_test.go 的 TestTagGetInvalidSlug），
+// 所以 handler 這邊跟一般不存在的標籤一樣：回 400，不能寫入。
+func TestInvalidTagSlugsRejected(t *testing.T) {
+	invalid := []string{"Bad Slug", "a/b", "a/b/c", "__reserved__", "..", "", "Go"}
+	for _, slug := range invalid {
+		t.Run(slug, func(t *testing.T) {
+			f := &fakeStore{}
+			body := `{"title":"x","tagSlugs":["go",` + strconvQuote(slug) + `]}`
+			rec := do(t, f, "POST", "/posts", body)
+			msg := assertError(t, rec, http.StatusBadRequest, "invalid_request")
+			if slug != "" && !strings.Contains(msg, slug) {
+				t.Errorf("訊息 %q 應該列出不存在的標籤 %q", msg, slug)
+			}
+			if slices.Contains(f.calls, "Create") {
+				t.Errorf("呼叫 = %v，標籤不合法時不能寫入", f.calls)
+			}
+		})
+	}
+}
+
+func TestTagCheckStoreError(t *testing.T) {
+	tests := []struct {
+		name, method, target, body string
+	}{
+		{"POST", "POST", "/posts", `{"title":"x","tagSlugs":["go"]}`},
+		{"PATCH", "PATCH", "/posts/" + testID, `{"tagSlugs":["go"]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 查標籤時資料庫壞了：是 500，不是 400「標籤不存在」，更不能當成存在繼續寫入
+			f := &fakeStore{tagErr: errors.New("firestore: deadline exceeded"), updateRet: samplePost()}
+			rec := do(t, f, tt.method, tt.target, tt.body)
+			msg := assertError(t, rec, http.StatusInternalServerError, "internal")
+			if strings.Contains(msg, "firestore") {
+				t.Errorf("500 的訊息不能透露內部錯誤：%q", msg)
+			}
+			if slices.Contains(f.calls, "Create") || slices.Contains(f.calls, "Update") {
+				t.Errorf("呼叫 = %v，查標籤失敗時不能繼續寫入", f.calls)
+			}
+		})
+	}
+}
+
+// 欄位驗證比查標籤便宜：body 本身就不合法時，不用浪費 Firestore 讀取。
+func TestValidationRunsBeforeTagCheck(t *testing.T) {
+	tests := []struct {
+		name, method, target, body string
+	}{
+		{"POST title 空的", "POST", "/posts", `{"title":"","tagSlugs":["go"]}`},
+		{"POST kind 不合法", "POST", "/posts", `{"title":"x","kind":"blog","tagSlugs":["go"]}`},
+		{"PATCH slug 不合法", "PATCH", "/posts/" + testID, `{"slug":"Bad","tagSlugs":["go"]}`},
+		{"PATCH 不允許的欄位", "PATCH", "/posts/" + testID, `{"status":"published","tagSlugs":["go"]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeStore{}
+			rec := do(t, f, tt.method, tt.target, tt.body)
+			assertError(t, rec, http.StatusBadRequest, "invalid_request")
+			assertNotCalled(t, f)
+		})
+	}
+}
+
+func strconvQuote(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }
 
 func TestUpdateManyFields(t *testing.T) {

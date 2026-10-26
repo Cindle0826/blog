@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -86,21 +85,27 @@ type postStore interface {
 	Update(ctx context.Context, id string, patch store.PostPatch) (*store.Post, error)
 }
 
-type PostHandler struct {
-	repo postStore
+type tagGetter interface {
+	Get(ctx context.Context, slug string) (*store.Tag, error)
 }
 
-func NewPostHandler(repo postStore) *PostHandler {
-	return &PostHandler{repo: repo}
+type PostHandler struct {
+	repo postStore
+	tags tagGetter
+}
+
+func NewPostHandler(repo postStore, tags tagGetter) *PostHandler {
+	return &PostHandler{
+		repo: repo,
+		tags: tags,
+	}
 }
 
 func (p *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 
 	var req createPostRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := handleDecodeBody(r.Body, &req); err != nil {
 		handleError(err, w)
 		return
 	}
@@ -131,6 +136,18 @@ func (p *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	post := req.toCreate()
+
+	missing, err := p.missingTags(r.Context(), post.TagSlugs)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "檢查標籤失敗，請查看詳細Log")
+		httpx.WriteErrLog("伺服器回應失敗", "Create", "[posts_handler] errMsg", err)
+		return
+	}
+	if len(missing) > 0 {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request",
+			"標籤不存在："+strings.Join(missing, "、"))
+		return
+	}
 
 	cp, err := p.repo.Create(r.Context(), post)
 	if err != nil {
@@ -332,11 +349,7 @@ func (p *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req updatePostRequest
-
-	decoder := json.NewDecoder(r.Body)
-	// 嚴格判斷參數
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := handleDecodeBody(r.Body, &req); err != nil {
 		handleError(err, w)
 		return
 	}
@@ -364,6 +377,20 @@ func (p *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if patch == (store.PostPatch{}) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "沒有要更新的欄位")
 		return
+	}
+
+	if patch.TagSlugs != nil {
+		missing, err := p.missingTags(r.Context(), *patch.TagSlugs)
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal", "檢查標籤失敗，請查看詳細Log")
+			httpx.WriteErrLog("伺服器回應失敗", "Update", "[posts_handler] errMsg", err)
+			return
+		}
+		if len(missing) > 0 {
+			httpx.WriteError(w, http.StatusBadRequest, "invalid_request",
+				"標籤不存在："+strings.Join(missing, "、"))
+			return
+		}
 	}
 
 	up, err := p.repo.Update(r.Context(), id, patch)
@@ -395,32 +422,26 @@ func (p *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleError(err error, w http.ResponseWriter) {
-	var (
-		syntaxErr        *json.SyntaxError
-		unmarshalTypeErr *json.UnmarshalTypeError
-		maxBytesErr      *http.MaxBytesError
-	)
+func (p *PostHandler) missingTags(ctx context.Context, slugs []string) ([]string, error) {
+	var missing []string
+	seen := make(map[string]bool)
 
-	switch {
-	case errors.As(err, &syntaxErr):
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "資料傳遞有誤")
-	case errors.As(err, &unmarshalTypeErr):
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "資料解析有誤")
-	case errors.Is(err, io.EOF):
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "資料傳遞為空")
-	case errors.Is(err, io.ErrUnexpectedEOF):
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "資料不完整")
-	case strings.HasPrefix(err.Error(), "json: unknown field"):
-		fieldName := strings.TrimPrefix(err.Error(), "json: unknown field ")
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("%s 為不合法參數", fieldName))
-	case errors.As(err, &maxBytesErr):
-		httpx.WriteError(w, http.StatusRequestEntityTooLarge, "invalid_request", "資料傳遞過大")
-	default:
-		httpx.WriteError(w, http.StatusInternalServerError, "internal", "資料其他錯誤，請查看Log")
-		httpx.WriteErrLog("接收請求失敗", "handleError", "[posts_handler] errMsg", err)
+	for _, slug := range slugs {
+		if seen[slug] {
+			continue
+		}
+		seen[slug] = true
 
+		_, err := p.tags.Get(ctx, slug)
+		switch {
+		case err == nil:
+		case errors.Is(err, store.ErrNotFound):
+			missing = append(missing, slug)
+		default:
+			return nil, fmt.Errorf("查詢標籤 %q 失敗: %w", slug, err)
+		}
 	}
+	return missing, nil
 }
 
 func toPostDetail(p *store.Post) *postDetail {

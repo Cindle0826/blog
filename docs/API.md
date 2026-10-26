@@ -222,8 +222,16 @@ Authorization: Bearer <firebase-id-token>
 建立完重新拉一次列表、勾起來，再存文章。
 
 `POST /api/posts` 與 `PATCH /api/posts/{id}` 有送 `tagSlugs` 時，後端要檢查每一個都存在：
-用 `GetAll` 一次讀回這些 `tags/{slug}`，有任何一份 `!Exists()` 就回 `400`，
-訊息列出不存在的 slug（例如「標籤不存在：rust、wasm」）。`[]` 不用查。
+
+- 有任何一個不存在 → `400 invalid_request`，訊息列出**全部**不存在的 slug，
+  重複的只列一次（例如「標籤不存在：rust、wasm」）。格式不合法的 slug 也算不存在
+- 查詢時資料庫出錯 → `500 internal`，不寫入
+- 沒送、`null`、`[]` 都不用查。欄位驗證（title、kind、slug…）在查標籤之前做
+
+實作（2026-10-26）：`PostHandler` 依賴 `TagStore.Get`（只有這個方法的小介面），
+逐一查詢，`ErrNotFound` 記為不存在，其他錯誤直接回 500。格式檢查在 `TagStore.Get` 裡，
+handler 不用自己檢查。一篇文章只有幾個標籤，逐一查詢多出來的延遲感覺不出來；
+讀取次數跟 `GetAll` 一樣。
 
 ### `GET /api/tags`
 
@@ -231,8 +239,10 @@ Authorization: Bearer <firebase-id-token>
 { "items": [ { "slug": "go", "name": "Go", "count": 12 } ] }
 ```
 
-`count` 是**已發布**文章數，不含草稿。不存在資料庫裡，每次請求用聚合查詢現算，
-所以永遠跟實際文章一致。
+`count` 是**已發布**文章數（文章加筆記），不含草稿。不存在資料庫裡，每次請求用聚合查詢現算，
+所以永遠跟實際文章一致。實作是 handler 對每個標籤呼叫 `PostStore.CountPublished(ctx, "", slug)`。
+
+依 slug 排序。沒有標籤時是 `{ "items": [] }`，不是 `null`。
 
 ### `POST /api/tags`
 
@@ -251,7 +261,7 @@ Authorization: Bearer <firebase-id-token>
 - 送了這兩個以外的欄位 → `400`
 - slug 已經存在 → `409 slug_conflict`。用 `Create` 寫，文件已存在時它會回
   `AlreadyExists`，不用先查一次
-- 新文件的 `order` 填 `0`
+- `slug`、`name` 都先去掉前後空白再檢查（跟 `POST /api/posts` 的 slug 一樣）
 
 ### `PUT /api/tags/{slug}`
 
@@ -262,7 +272,9 @@ Authorization: Bearer <firebase-id-token>
 只能改顯示名稱。slug 是 document ID，也被文章的 `tagSlugs` 引用，不可改。
 
 - `name` 去掉前後空白後是空的 → `400`
-- 標籤不存在 → `404`。**不會順便建立**，建立一律走 `POST /api/tags`
+- 送了 `name` 以外的欄位（例如 `slug`）→ `400`
+- 標籤不存在 → `404`。**不會順便建立**，建立一律走 `POST /api/tags`。
+  路徑上的 slug 格式不合法（例如 `Go`、`__reserved__`）也是 `404`，不是 `400` 或 `500`
 
 → `200`，回傳跟列表裡一樣的物件（含 `count`）。
 

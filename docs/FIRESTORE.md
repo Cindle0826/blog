@@ -14,7 +14,7 @@ Firestore 用 **Native mode**（不是 Datastore mode）。
 | Collection | 用途 | 預估筆數 |
 |---|---|---|
 | `posts` | 文章與知識庫筆記（同一個 collection，靠 `kind` 區分） | < 500 |
-| `tags` | 標籤的顯示名稱與排序（文章數是讀取時現算的） | < 50 |
+| `tags` | 標籤的顯示名稱（文章數是讀取時現算的） | < 50 |
 | `meta` | 單例設定（站台資訊、about 內文） | 3 |
 
 **為什麼文章和筆記放同一個 collection**：兩者的欄位完全一樣，查詢也一樣。
@@ -106,7 +106,8 @@ Firestore 用 **Native mode**（不是 Datastore mode）。
 
 ## `tags/{slug}`
 
-document ID 直接用 slug，方便直接 `Get`。
+document ID 直接用 slug，方便直接 `Get`。slug 同時是公開站 `/tags/{slug}` 的網址，
+document ID 建立後改不了，剛好保證網址不會變。
 
 **只有 `POST /api/tags` 會建立這裡的文件**（2026-10-20 決定）。文章的 `tagSlugs` 只能引用
 已經存在的標籤，寫入時由後端檢查（見 [`API.md`](API.md)「標籤」）。slug 被文章引用，
@@ -114,10 +115,17 @@ document ID 直接用 slug，方便直接 `Get`。
 
 ```jsonc
 {
-  "name":  "Kubernetes",   // 顯示名稱，大小寫由你決定
-  "order": 0               // 手動排序用，0 表示依文章數排
+  "name":      "Kubernetes",             // 顯示名稱，大小寫由你決定，可以是中文
+  "createdAt": "2026-10-26T08:00:00Z"   // 建立時間，API 不回傳
 }
 ```
+
+- **沒有 `order` 欄位**（2026-10-26 拿掉）：原本打算手動排序，但 API 和後台都沒有設定它的地方。
+  後台依 slug 排（Firestore 不指定排序時就是依 document ID），公開站的標籤頁依文章數排
+- **slug 不存成欄位**：Go 的 `store.Tag.Slug` 標了 `firestore:"-"`，讀取時從 `snap.Ref.ID` 填回來
+- **`TagStore.Get` 先用 `ValidSlug` 檢查格式**，不合法就回 `ErrNotFound`，不送到 Firestore。
+  `""`、`a/b`、`..`、`__reserved__` 送出去會是 InvalidArgument（變成 500），
+  `a/b/c` 則是合法路徑，會讀到 `tags/a/b/c` 這份子集合裡的文件（2026-10-26 在模擬器實測）
 
 **文章數不存在這裡。** `GET /api/tags` 回的 `count` 是讀取時用聚合查詢現算的
 （`status == "published"` + `tagSlugs array-contains`），所以新增、修改、刪除、

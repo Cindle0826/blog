@@ -51,16 +51,27 @@ func main() {
 
 	// init PostBlog handler
 	postsRepo := store.NewPostStore(fsClient)
-	postsHandler := h.NewPostHandler(postsRepo)
+	// init tag handler
+	tagRepo := store.NewTagStore(fsClient)
+
+	postsHandler := h.NewPostHandler(postsRepo, tagRepo)
+	tagHandler := h.NewTagHandler(tagRepo, postsRepo)
 
 	// init api handler
 	api := http.NewServeMux()
+
+	// posts
 	api.HandleFunc("POST /posts", postsHandler.Create)
 	api.HandleFunc("GET /posts/{id}", postsHandler.Get)
 	api.HandleFunc("GET /posts", postsHandler.List)
 	api.HandleFunc("DELETE /posts/{id}", postsHandler.Delete)
 	api.HandleFunc("POST /posts/{id}/publish", postsHandler.SetPublished)
 	api.HandleFunc("PATCH /posts/{id}", postsHandler.Update)
+
+	// tags
+	api.HandleFunc("GET /tags", tagHandler.List)
+	api.HandleFunc("POST /tags", tagHandler.Create)
+	api.HandleFunc("PUT /tags/{slug}", tagHandler.Update)
 
 	root := http.NewServeMux()
 

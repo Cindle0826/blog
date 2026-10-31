@@ -28,3 +28,12 @@ func WriteError(w http.ResponseWriter, code int, codeMsg string, msg string) {
 
 	_ = json.NewEncoder(w).Encode(errMsg)
 }
+
+func WriteJson(w http.ResponseWriter, code int, method string, resp any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		WriteErrLog("伺服器回應失敗", method, "[handler] errMsg", err)
+		return
+	}
+}

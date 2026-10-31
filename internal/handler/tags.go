@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -70,17 +69,11 @@ func (t *TagHandler) List(w http.ResponseWriter, r *http.Request) {
 		items = append(items, tagDetail{Slug: tag.Slug, Name: tag.Name, Count: n})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
 	resp := map[string][]tagDetail{
 		"items": items,
 	}
 
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		httpx.WriteErrLog("伺服器回應失敗", "List", "[tags_handler] errMsg", err)
-		return
-	}
+	httpx.WriteJson(w, http.StatusOK, "tags.List", resp)
 }
 
 func (t *TagHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -122,12 +115,7 @@ func (t *TagHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Count: 0,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		httpx.WriteErrLog("伺服器回應失敗", "Create", "[tags_handler] errMsg", err)
-		return
-	}
+	httpx.WriteJson(w, http.StatusCreated, "tags.Create", resp)
 }
 
 func (t *TagHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -171,10 +159,5 @@ func (t *TagHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Count: count,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		httpx.WriteErrLog("伺服器回應失敗", "Update", "[tags_handler] errMsg", err)
-		return
-	}
+	httpx.WriteJson(w, http.StatusOK, "tags.Update", resp)
 }

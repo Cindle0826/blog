@@ -10,6 +10,7 @@ type Config struct {
 	Server    Server
 	Firebase  Firebase
 	Firestore Firestore
+	GCS       GCS
 	Dev       bool
 }
 
@@ -29,6 +30,10 @@ type Firestore struct {
 	ProjectID string
 }
 
+type GCS struct {
+	ImageBucketName string
+}
+
 // Load 讀環境變數。設定不完整就回 error，不要退回預設值——
 // 白名單沒設是部署疏失，而疏失的安全解讀是「不給存取」。
 func Load() (Config, error) {
@@ -44,11 +49,18 @@ func Load() (Config, error) {
 		Firestore: Firestore{
 			ProjectID: GetEnvOr("GOOGLE_CLOUD_PROJECT", ""),
 		},
+		GCS: GCS{
+			ImageBucketName: GetEnvOr("BLOG_UPLOADS_BUCKET", ""),
+		},
 		Dev: os.Getenv("BLOG_DEV") == "1",
 	}
 
 	if cfg.Firebase.ProjectID == "" {
 		return Config{}, errors.New("GOOGLE_CLOUD_PROJECT 未設定：Admin SDK 要用它比對 ID token 的 aud 宣告")
+	}
+
+	if cfg.GCS.ImageBucketName == "" {
+		return Config{}, errors.New("cloud run 未設置圖片上傳 bucket name")
 	}
 
 	admins, err := parseAdminUIDs(os.Getenv("ADMIN_UIDS"))

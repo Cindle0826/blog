@@ -102,7 +102,7 @@ func NewPostHandler(repo postStore, tags tagGetter) *PostHandler {
 }
 
 func (p *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+	r.Body = http.MaxBytesReader(w, r.Body, _1MB)
 
 	var req createPostRequest
 	if err := handleDecodeBody(r.Body, &req); err != nil {
@@ -161,14 +161,9 @@ func (p *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 轉換 response
-	pr := toPostDetail(cp)
+	resp := toPostDetail(cp)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(pr); err != nil {
-		httpx.WriteErrLog("伺服器回應失敗", "Create", "[posts_handler] errMsg", err)
-		return
-	}
+	httpx.WriteJson(w, http.StatusCreated, "posts.Create", resp)
 }
 
 func (p *PostHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -191,14 +186,9 @@ func (p *PostHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 轉換 response
-	pr := toPostDetail(gp)
+	resp := toPostDetail(gp)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(pr); err != nil {
-		httpx.WriteErrLog("伺服器回應失敗", "Get", "[posts_handler] errMsg", err)
-		return
-	}
+	httpx.WriteJson(w, http.StatusOK, "posts.Get", resp)
 }
 
 func (p *PostHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -257,19 +247,14 @@ func (p *PostHandler) List(w http.ResponseWriter, r *http.Request) {
 		ps = append(ps, *pr)
 	}
 
-	var rs = postPage{
+	var resp = postPage{
 		Items:      ps,
 		Page:       page,
 		TotalPages: (total + limit - 1) / limit,
 		Total:      total,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(rs); err != nil {
-		httpx.WriteErrLog("伺服器回應失敗", "List", "[posts_handler] errMsg", err)
-		return
-	}
+	httpx.WriteJson(w, http.StatusOK, "posts.List", resp)
 }
 
 func (p *PostHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +281,7 @@ func (p *PostHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *PostHandler) SetPublished(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+	r.Body = http.MaxBytesReader(w, r.Body, _1MB)
 
 	id := r.PathValue("id")
 
@@ -328,18 +313,13 @@ func (p *PostHandler) SetPublished(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rp := toPostDetail(post)
+	resp := toPostDetail(post)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(rp); err != nil {
-		httpx.WriteErrLog("伺服器回應失敗", "SetPublished", "[posts_handler] errMsg", err)
-		return
-	}
+	httpx.WriteJson(w, http.StatusOK, "posts.SetPublished", resp)
 }
 
 func (p *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+	r.Body = http.MaxBytesReader(w, r.Body, _1MB)
 
 	id := r.PathValue("id")
 
@@ -412,14 +392,9 @@ func (p *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// 轉換 response
-	pr := toPostDetail(up)
+	resp := toPostDetail(up)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(pr); err != nil {
-		httpx.WriteErrLog("伺服器回應失敗", "Update", "[posts_handler] errMsg", err)
-		return
-	}
+	httpx.WriteJson(w, http.StatusOK, "posts.Update", resp)
 }
 
 func (p *PostHandler) missingTags(ctx context.Context, slugs []string) ([]string, error) {

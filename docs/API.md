@@ -162,7 +162,7 @@ Authorization: Bearer <firebase-id-token>
 { "markdown": "改過的內容", "tagSlugs": ["go"] }
 ```
 
-可以改的欄位：`title`、`kind`、`summary`、`markdown`、`tagSlugs`、`pinned`、`cover`、`slug`。
+可以改的欄位：`title`、`kind`、`summary`、`markdown`、`tagSlugs`、`pinned`、`uploadResponse`、`slug`。
 
 | 欄位 | 沒送 | 送了 |
 |---|---|---|
@@ -171,7 +171,7 @@ Authorization: Bearer <firebase-id-token>
 | `summary`、`markdown` | 不動 | 照存，**可以是空字串** |
 | `tagSlugs` | 不動 | 照存；`[]` 代表清掉所有標籤；裡面有不存在的標籤 → `400` |
 | `pinned` | 不動 | 照存 |
-| `cover` | 不動 | `null` → 拿掉封面；物件 → 換封面（`url` 要以 `/images/` 開頭，`width`、`height` 要大於 0，否則 `400`） |
+| `uploadResponse` | 不動 | `null` → 拿掉封面；物件 → 換封面（`url` 要以 `/images/` 開頭，`width`、`height` 要大於 0，否則 `400`） |
 | `slug` | 不動 | 格式不合法 → `400`；文章**發布過**（`publishedAt` 不是 null）→ `409 slug_locked`；跟其他文章重複 → `409 slug_conflict`；跟原本一樣 → 不算修改 |
 
 - 一個欄位都沒送（`{}`）→ `400`
@@ -289,14 +289,29 @@ handler 不用自己檢查。一篇文章只有幾個標籤，逐一查詢多出
 
 ### `POST /api/uploads`
 
-`multipart/form-data`，欄位名 `file`。
+`multipart/form-data`，欄位名 `file`，**一次一張**。多張由前端分開送（可以同時送）。
 
-後端要做：
-1. 檢查 MIME（只收 `image/jpeg`、`image/png`、`image/webp`、`image/gif`）
-2. 檢查大小上限 10 MB
-3. **長邊超過 1600px 就縮圖**（用 `golang.org/x/image/draw`，純 Go 不用 cgo）
-4. 存到 GCS，物件路徑 `{yyyy}/{mm}/{uuid}.{ext}`
-5. 回傳**站台上的路徑**與尺寸
+**縮圖由後台在瀏覽器裡做**（2026-10-31 決定）：長邊超過 1600px 的圖，後台先用
+`createImageBitmap` + canvas 縮到 1600 以內再上傳（截圖輸出 PNG，照片輸出 WebP，Safari 不能編 WebP 時改 JPEG）。
+後端**不解碼、不縮圖、不重新編碼**，只檢查與存檔：
+
+1. `MaxBytesReader` 限制 body；檔案本身上限 **10 MB**，超過 → `413`
+2. 讀出欄位 `file`：沒有、是空的、或欄位 `file` 有兩個以上 → `400`；不是 multipart → `400`
+3. **格式看檔案內容**：用 `image.DecodeConfig`（只讀檔頭）。解不開、或格式不是
+   jpeg / png / webp / gif → `400`。**不看**使用者的檔名，也**不看** part 的 `Content-Type`，兩者都能亂填。
+   webp 的解碼器要 `import _ "golang.org/x/image/webp"`，其他三種在標準庫，也要各自 blank import
+4. **長邊超過 1600 → `400`**（不自己縮，直接擋。正常情況前端已經縮好，會到這裡的只有繞過後台的請求）
+5. 物件名稱由後端產生：`{yyyy}/{mm}/{uuid}.{ext}`，年月是上傳當下，`ext` 依第 3 步的格式
+   （jpeg → `jpg`）。**原封不動**寫進 GCS：`ContentType` 是第 3 步判斷出的 MIME，
+   **寬高寫進物件的自訂 metadata**（`width`、`height`，字串），見下方說明
+6. 回 `200`，`path` 是站台路徑 `/images/` + 物件名稱，`bytes` 是檔案大小
+
+> **為什麼寬高要存在 GCS metadata**（2026-10-31 決定）：Markdown 的 `![alt](path)` 放不下寬高，
+> 但轉成 HTML 時 `<img>` 一定要有尺寸（不然會版面位移）。`internal/markdown` 轉換時
+> 用 `obj.Attrs(ctx)` 讀 metadata 取得寬高；轉換只在後台存檔時發生，每張圖多一次讀取可以忽略。
+> 圖片資料只存在 GCS 一個地方，不會有兩邊不一致的問題。
+> 之後如果要做後台的媒體庫，再加 Firestore 的 `images` collection（從 GCS metadata 匯入一次即可），
+> 文章裡的路徑不用改。**不要**在圖片那邊記錄被哪些文章使用，需要時掃文章的 `cover.url` 與 Markdown。
 
 ```jsonc
 {

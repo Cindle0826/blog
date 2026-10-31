@@ -53,8 +53,10 @@ $c_green${c_bold}本機開發環境就緒。$c_reset
   ${c_bold}# 前端預覽（假資料，不需要 GCP）$c_reset
   BLOG_DEV=1 go run ./cmd/preview
 
-  ${c_bold}# 正式站（需要 Firestore）$c_reset
-  GOOGLE_CLOUD_PROJECT=$PROJECT_ID go run ./cmd/server
+  ${c_bold}# 正式站（需要 Firestore、GCS）$c_reset
+  ${c_bold}# 先跑 infrastruct_as_code/scripts/04-local-env.sh 產生 .env：$c_reset
+  ${c_bold}# 除了 GOOGLE_CLOUD_PROJECT，還要 BLOG_UPLOADS_BUCKET 與 ADMIN_UIDS，少一個 server 就不啟動$c_reset
+  (set -a; . ./.env; set +a; go run ./cmd/server)
 
 ${c_bold}不要$c_reset 下載 service account 金鑰檔。上面這個流程不需要，
 Cloud Run 上也不需要，而且金鑰外洩是這類專案最常見的事故來源。

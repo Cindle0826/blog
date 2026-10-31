@@ -11,6 +11,11 @@ import (
 	"cindle.dev/blog/internal/httpx"
 )
 
+const (
+	_1MB            = 1048576
+	uploadMaxMemory = _1MB * 10
+)
+
 func handleError(err error, w http.ResponseWriter) {
 	var (
 		syntaxErr        *json.SyntaxError

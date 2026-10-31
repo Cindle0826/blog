@@ -12,6 +12,7 @@ import (
 	"cindle.dev/blog/internal/config"
 	h "cindle.dev/blog/internal/handler"
 	"cindle.dev/blog/internal/store"
+	"cloud.google.com/go/storage"
 	"firebase.google.com/go/v4"
 
 	"cloud.google.com/go/firestore"
@@ -49,13 +50,25 @@ func main() {
 		_ = fsClient.Close()
 	}()
 
-	// init PostBlog handler
-	postsRepo := store.NewPostStore(fsClient)
-	// init tag handler
-	tagRepo := store.NewTagStore(fsClient)
+	// init GCS client
+	gcsClient, err := initGCSClient(ctx)
+	if err != nil {
+		slog.Error("初始化 GCS Client 失敗", "[main] errMsg", err.Error())
+		os.Exit(1)
+	}
+	defer func() {
+		_ = gcsClient.Close()
+	}()
 
+	// init repository
+	postsRepo := store.NewPostStore(fsClient)
+	tagRepo := store.NewTagStore(fsClient)
+	imageRepo := store.NewImageStore(gcsClient, cfg.GCS.ImageBucketName)
+
+	// init handler
 	postsHandler := h.NewPostHandler(postsRepo, tagRepo)
 	tagHandler := h.NewTagHandler(tagRepo, postsRepo)
+	uploadHandler := h.NewUploadHandler(imageRepo)
 
 	// init api handler
 	api := http.NewServeMux()
@@ -67,6 +80,7 @@ func main() {
 	api.HandleFunc("DELETE /posts/{id}", postsHandler.Delete)
 	api.HandleFunc("POST /posts/{id}/publish", postsHandler.SetPublished)
 	api.HandleFunc("PATCH /posts/{id}", postsHandler.Update)
+	api.HandleFunc("POST /uploads", uploadHandler.Create)
 
 	// tags
 	api.HandleFunc("GET /tags", tagHandler.List)
@@ -109,6 +123,15 @@ func initFireStore(ctx context.Context, cfg config.Config) (*firestore.Client, e
 	client, err := firestore.NewClient(ctx, cfg.Firestore.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("firestore client: %w", err)
+	}
+
+	return client, nil
+}
+
+func initGCSClient(ctx context.Context) (*storage.Client, error) {
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GCS Client: %w", err)
 	}
 
 	return client, nil

@@ -118,12 +118,13 @@
 > Firestore 的 Go 寫法對照見 [`FIRESTORE-GO.md`](FIRESTORE-GO.md)。
 
 - [ ] 2A.1　`internal/config` — 從環境變數組出 `view.Site`
-      已讀 `GOOGLE_CLOUD_PROJECT`、`ADMIN_UIDS`、`BLOG_DEV` 與模擬器防呆；
-      還沒讀 `BLOG_BASE_URL`、`BLOG_UPLOADS_BUCKET`，也還沒組 `view.Site`
+      已讀 `GOOGLE_CLOUD_PROJECT`、`ADMIN_UIDS`、`BLOG_UPLOADS_BUCKET`、`BLOG_DEV` 與模擬器防呆（前三個沒設就不啟動）；
+      還沒讀 `BLOG_BASE_URL`，也還沒組 `view.Site`
 - [ ] 2A.2　`internal/store` — Firestore client 與 CRUD（進度見 4.3 的表）
       已完成：`PostStore` 的 Create、Get、List（後台，Go 端搜尋／排序／分頁）、Delete、SetPublished、Update、
       GetPublishedBySlug、ListPublished、CountPublished（公開頁，Firestore 分頁）
 - [ ] 2A.3　`internal/markdown` — goldmark + chroma + bluemonday，產出 `html`/`toc`/`readingMin`
+      內文 `<img>` 的寬高從 GCS 物件的 metadata 讀（`POST /api/uploads` 上傳時寫入，見 API.md）
       目前 `Create` 存進去的 `html` 是空的，公開頁面要等這一項
 - [x] 2A.4　slug 產生與唯一性檢查
       建立時（2026-10-15）：`resolveSlug` 依 slug 來源分兩條路——使用者填的撞號回 409，
@@ -186,7 +187,7 @@
 | `POST /api/tags` | ✅ | ✅ | 2b、12b、12c、12d | 用 `Create`，已存在回 409 |
 | `PUT /api/tags/{slug}` | ✅ | ✅ | 13、13b | 不存在回 404，不會建立；格式檢查在 `TagStore.Get` |
 | POST／PATCH 文章檢查 `tagSlugs` | ✅ | ✅ | 11b | handler 逐一呼叫 `TagStore.Get`，有不存在的回 400，列出全部不存在的 slug |
-| `POST /api/uploads` | ⬜ | ⬜ | 14 | **下一支**。4.4，需要 GCS 與縮圖 |
+| `POST /api/uploads` | ✅ | ✅ | 14 | 前端縮圖，後端只驗證（10 MB、四種格式、長邊 ≤ 1600）後原樣寫進 GCS，寬高放物件 metadata。**還沒對真的 bucket 跑過** |
 | `GET /images/{path...}` | ⬜ | ⬜ | 15、16 | 4.4b，公開路由，不經過 `RequireAdmin` |
 | `POST /api/cache/purge` | — | ⬜ | 17 | 依賴 2A.6 `internal/cache` |
 
@@ -253,13 +254,14 @@
 ## 目前狀態
 
 Phase 0、1、2B 完成。Phase 4 的登入與 middleware、後台 React（4.5、4.7）完成。
-後台 API 完成 8 支：文章 5 支（`POST /api/posts`、`GET /api/posts/{id}`、`GET /api/posts`、`DELETE /api/posts/{id}`、
+後台 API 完成 9 支：文章 5 支（`POST /api/posts`、`GET /api/posts/{id}`、`GET /api/posts`、`DELETE /api/posts/{id}`、
 `POST /api/posts/{id}/publish`）皆已用真的 Firestore 實測；`PATCH /api/posts/{id}` 完成一般欄位（連帶動作待補）；
 標籤 3 支（`GET`、`POST /api/tags`、`PUT /api/tags/{slug}`）與文章的 `tagSlugs` 檢查在 2026-10-26 完成，
-單元測試與模擬器測試都通過，還沒用 `api_test.http` 對真的 Firestore 跑。handler 外層掛了 `Recover`，panic 會回 500 而不是切斷連線。2026-10-24 Go 升到 1.27.3（修掉 1.27.1 的 13 個可呼叫標準庫漏洞）、`golang.org/x/net` 升到 v0.60.0（修掉同一批 HTTP/2 漏洞），govulncheck 0 個可呼叫漏洞。
+單元測試與模擬器測試都通過，還沒用 `api_test.http` 對真的 Firestore 跑。`POST /api/uploads` 在 2026-10-31 完成，單元測試通過，還沒對真的 bucket 跑。handler 外層掛了 `Recover`，panic 會回 500 而不是切斷連線。2026-10-24 Go 升到 1.27.3（修掉 1.27.1 的 13 個可呼叫標準庫漏洞）、`golang.org/x/net` 升到 v0.60.0（修掉同一批 HTTP/2 漏洞），govulncheck 0 個可呼叫漏洞。
 
 下一步：先用 `api_test.http` 對真的 Firestore 跑標籤那幾則（2b、3、11b、12～13b），
-再依 4.3 的表繼續：上傳與圖片 → 快取失效。
+用第 14 則對真的 bucket 上傳一次，確認 `content_type` 與寬高 metadata；
+再依 4.3 的表繼續：`GET /images/{path...}` → 快取失效。
 `internal/markdown`（2A.3）做完後，回頭補 PATCH 的 html/toc 重算。
 `tags.count` 改用聚合查詢即時算，寫入的 API 都不用維護它（見 4.3 表下方的說明）。
 

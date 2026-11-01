@@ -162,7 +162,7 @@ Authorization: Bearer <firebase-id-token>
 { "markdown": "改過的內容", "tagSlugs": ["go"] }
 ```
 
-可以改的欄位：`title`、`kind`、`summary`、`markdown`、`tagSlugs`、`pinned`、`uploadResponse`、`slug`。
+可以改的欄位：`title`、`kind`、`summary`、`markdown`、`tagSlugs`、`pinned`、`cover`、`slug`。
 
 | 欄位 | 沒送 | 送了 |
 |---|---|---|
@@ -171,7 +171,7 @@ Authorization: Bearer <firebase-id-token>
 | `summary`、`markdown` | 不動 | 照存，**可以是空字串** |
 | `tagSlugs` | 不動 | 照存；`[]` 代表清掉所有標籤；裡面有不存在的標籤 → `400` |
 | `pinned` | 不動 | 照存 |
-| `uploadResponse` | 不動 | `null` → 拿掉封面；物件 → 換封面（`url` 要以 `/images/` 開頭，`width`、`height` 要大於 0，否則 `400`） |
+| `cover` | 不動 | `null` → 拿掉封面；物件 → 換封面（`url` 要以 `/images/` 開頭，`width`、`height` 要大於 0，否則 `400`） |
 | `slug` | 不動 | 格式不合法 → `400`；文章**發布過**（`publishedAt` 不是 null）→ `409 slug_locked`；跟其他文章重複 → `409 slug_conflict`；跟原本一樣 → 不算修改 |
 
 - 一個欄位都沒送（`{}`）→ `400`

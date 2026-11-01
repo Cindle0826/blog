@@ -14,10 +14,14 @@
 #
 # 「Run all requests in file」可以一次跑完整個流程。
 #
-# ── 目前預期會全部失敗 ───────────────────────────────────────
+# ── 目前的進度（2026-10-31）──────────────────────────────────
 #
-# cmd/server 還沒實作，所以現在跑會全部連不上。這是刻意的：這份檔案是
-# 你的靶子，實作到哪就有幾則變綠。
+# 1～14e 對應已經實作的端點（文章、標籤、上傳），應該全綠。
+# 15、16（GET /images）與 17（快取失效）還沒做，現在會是 404，這是預期的：
+# 這份檔案是你的靶子，實作到哪就有幾則變綠。
+#
+# 第 14 則會真的寫一張圖進 bucket，而且沒有刪除的 API——每跑一次就多一個物件。
+# 圖很小，費用可以忽略，但別拿它來壓測。
 
 
 ### 1. 認證：不帶 token → 401
@@ -301,7 +305,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 7. 發布 → status 與 publishedAt
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -328,7 +331,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 8. 退回草稿 → publishedAt 必須保持不變
 ### ═══════════════════════════════════════════════════════════
 #
@@ -356,7 +358,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 9. 找不到的文章 → 404
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -377,7 +378,6 @@ Authorization: Bearer {{idToken}}
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 10. slug 撞號 → 409
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -404,7 +404,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 11. 欄位缺漏 → 400
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -424,7 +423,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 11b. 用了不存在的標籤 → 400
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -447,7 +445,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 12. 標籤列表
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -467,10 +464,21 @@ Authorization: Bearer {{idToken}}
             client.assert(typeof t.count === "number", "第 " + i + " 筆的 count 不是數字");
         });
     });
+
+    client.test("依 slug 排序", function() {
+        const slugs = response.body.items.map(function(t) { return t.slug; });
+        const sorted = slugs.slice().sort();
+        client.assert(JSON.stringify(slugs) === JSON.stringify(sorted),
+            "順序是 " + slugs.join(", "));
+    });
+
+    client.test("標籤 go 在列表裡（2b 建立的）", function() {
+        client.assert(response.body.items.some(function(t) { return t.slug === "go"; }),
+            "找不到 go");
+    });
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 12b. 建立標籤 → 201
 ### ═══════════════════════════════════════════════════════════
 #
@@ -501,7 +509,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 12c. 重複建立標籤 → 409
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -523,7 +530,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 12d. 標籤 slug 不合法 → 400
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -542,7 +548,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 13. 改標籤顯示名稱
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -565,7 +570,6 @@ Content-Type: application/json
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 13b. 改不存在的標籤 → 404，不會順便建立
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -583,11 +587,53 @@ Content-Type: application/json
 %}
 
 
+### 13c. 路徑上的 slug 格式不合法 → 404
 ### ═══════════════════════════════════════════════════════════
+#
+# 大寫的 Go 不是合法 slug。契約要的是 404（就是「沒有這個標籤」），
+# 不是 400，也不能讓 Firestore 的 InvalidArgument 變成 500。
+
+# @no-log
+PUT {{apiBase}}/api/tags/Go
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "name": "x" }
+
+> {%
+    client.test("回 404", function() {
+        client.assert(response.status === 404, "得到 " + response.status);
+    });
+%}
+
+
+### 13d. 想順便改 slug → 400
+### ═══════════════════════════════════════════════════════════
+# @no-log
+PUT {{apiBase}}/api/tags/go
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{ "slug": "golang", "name": "Go" }
+
+> {%
+    client.test("回 400", function() {
+        client.assert(response.status === 400,
+            "得到 " + response.status + "。slug 被文章的 tagSlugs 引用，不能改；多送的欄位要擋下來");
+        const code = (response.body.error || {}).code;
+        client.assert(code === "invalid_request", "得到 " + code);
+    });
+%}
+
+
 ### 14. 圖片上傳
 ### ═══════════════════════════════════════════════════════════
 #
-# 需要一個真的檔案。把任意圖片放到 http_tests/fixtures/sample.png 再跑。
+# fixtures/sample.png 是 1600×960 的 PNG，剛好在長邊上限內。
+# 縮圖是後台在瀏覽器裡做的，後端只檢查、原封不動存進 GCS（API.md「圖片上傳」）。
+#
+# 跑完可以確認 GCS 那邊的 Content-Type 與寬高 metadata：
+#   gcloud storage objects describe gs://cindle-blog-uploads/<path 去掉 /images/>
 
 # @no-log
 POST {{apiBase}}/api/uploads
@@ -610,28 +656,146 @@ Content-Type: image/png
 
     client.test("回的是站台路徑不是 GCS 網址", function() {
         client.assert(typeof r.path === "string", "少了 path 欄位");
-        client.assert(r.path.indexOf("/images/") === 0,
-            "path 要以 /images/ 開頭，得到 " + r.path);
         client.assert(r.path.indexOf("storage.googleapis.com") < 0,
             "不可以回 GCS 絕對網址——bucket 是私有的，而且那會把儲存供應商寫死進文章內容");
         client.assert(r.url === undefined,
             "契約裡沒有 url 欄位，只有 path");
     });
 
-    client.test("有尺寸", function() {
-        client.assert(typeof r.width === "number" && r.width > 0, "少了 width");
-        client.assert(typeof r.height === "number" && r.height > 0, "少了 height");
-        client.assert(r.width <= 1600,
-            "長邊應該被縮到 1600 以內，得到 " + r.width);
+    client.test("路徑是 /images/{yyyy}/{mm}/{uuid}.png", function() {
+        client.assert(/^\/images\/\d{4}\/\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/.test(r.path),
+            "得到 " + r.path + "。檔名由後端用 UUID 產生，不能用使用者的檔名");
+    });
+
+    client.test("尺寸與大小是原檔的", function() {
+        client.assert(r.width === 1600 && r.height === 960,
+            "sample.png 是 1600×960，得到 " + r.width + "×" + r.height +
+            "。後端不縮圖，回傳的應該是原檔尺寸");
+        client.assert(typeof r.bytes === "number" && r.bytes > 0, "bytes 應為正數，得到 " + r.bytes);
     });
 
     client.global.set("uploadedPath", r.path);
 %}
 
 
+### 14b. 長邊超過 1600 → 400，不會自動縮
 ### ═══════════════════════════════════════════════════════════
+#
+# fixtures/oversize.png 是 2000×1200。正常情況後台會先縮好，
+# 會走到這裡的只有繞過後台的請求。
+
+# @no-log
+POST {{apiBase}}/api/uploads
+Authorization: Bearer {{idToken}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="oversize.png"
+Content-Type: image/png
+
+< ./fixtures/oversize.png
+--WebAppBoundary--
+
+> {%
+    client.test("回 400", function() {
+        client.assert(response.status === 400,
+            "得到 " + response.status + "。如果是 200，代表超過上限的圖被存進去了");
+        const code = (response.body.error || {}).code;
+        client.assert(code === "invalid_request", "得到 " + code);
+    });
+    client.test("訊息寫出上限", function() {
+        const msg = (response.body.error || {}).message || "";
+        client.assert(msg.indexOf("1600") >= 0, "訊息要讓人知道上限是多少，得到：" + msg);
+    });
+%}
+
+
+### 14c. 不是圖片 → 400（檔名和 Content-Type 都是假的）
+### ═══════════════════════════════════════════════════════════
+#
+# 檔名寫 .png、part 的 Content-Type 寫 image/png，內容其實是文字。
+# 後端要看檔案內容判斷格式，這兩個都不能信。
+
+# @no-log
+POST {{apiBase}}/api/uploads
+Authorization: Bearer {{idToken}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="fake.png"
+Content-Type: image/png
+
+這不是圖片
+--WebAppBoundary--
+
+> {%
+    client.test("回 400", function() {
+        client.assert(response.status === 400, "得到 " + response.status);
+        const code = (response.body.error || {}).code;
+        client.assert(code === "invalid_request", "得到 " + code);
+    });
+%}
+
+
+### 14d. 欄位名不是 file → 400
+### ═══════════════════════════════════════════════════════════
+# @no-log
+POST {{apiBase}}/api/uploads
+Authorization: Bearer {{idToken}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="image"; filename="sample.png"
+Content-Type: image/png
+
+< ./fixtures/sample.png
+--WebAppBoundary--
+
+> {%
+    client.test("回 400", function() {
+        client.assert(response.status === 400,
+            "得到 " + response.status + "。欄位名固定是 file");
+        const code = (response.body.error || {}).code;
+        client.assert(code === "invalid_request", "得到 " + code);
+    });
+%}
+
+# 超過 10 MB → 413 不放在這裡：得在 repo 裡放一個 10 MB 的檔案。
+# 單元測試 TestUploadSizeLimit 已經涵蓋。
+
+
+### 14e. 把剛上傳的圖設成封面
+### ═══════════════════════════════════════════════════════════
+#
+# 上傳跟文章是兩支 API，這則確認它們接得起來：path 直接當 cover.url 用。
+
+# @no-log
+PATCH {{apiBase}}/api/posts/{{postId}}
+Authorization: Bearer {{idToken}}
+Content-Type: application/json
+
+{
+  "cover": { "url": "{{uploadedPath}}", "alt": "契約測試封面", "width": 1600, "height": 960 }
+}
+
+> {%
+    client.test("回 200", function() {
+        client.assert(response.status === 200, "得到 " + response.status);
+    });
+    client.test("封面存進去了", function() {
+        const c = response.body.cover || {};
+        client.assert(c.url === client.global.get("uploadedPath"),
+            "cover.url 應為 " + client.global.get("uploadedPath") + "，得到 " + c.url);
+        client.assert(c.width === 1600 && c.height === 960, "寬高沒存對");
+    });
+%}
+
+
 ### 15. 讀取圖片（公開路由，不帶 token）
 ### ═══════════════════════════════════════════════════════════
+#
+# 還沒實作（PLAN.md 4.4b），現在是 404。
+
 # @no-log
 GET {{apiBase}}{{uploadedPath}}
 
@@ -656,7 +820,6 @@ GET {{apiBase}}{{uploadedPath}}
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 16. 路徑穿越必須被擋
 ### ═══════════════════════════════════════════════════════════
 # @no-log
@@ -671,9 +834,11 @@ GET {{apiBase}}/images/../../etc/passwd
 %}
 
 
-### ═══════════════════════════════════════════════════════════
 ### 17. 快取失效
 ### ═══════════════════════════════════════════════════════════
+#
+# 還沒實作（PLAN.md 2A.6），現在是 404。
+
 # @no-log
 POST {{apiBase}}/api/cache/purge
 Authorization: Bearer {{idToken}}

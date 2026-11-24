@@ -160,8 +160,9 @@
 - [x] 4.2　ID token 驗證 middleware + UID 白名單　`cindle`（寫法見 [`AUTH-GO.md`](AUTH-GO.md)）
       401 / 403 / 200 三條路徑已用真的 Firebase token 實測（2026-09-28）
 - [ ] 4.3　`/api/*` 實作　`cindle`（進度見下表）
-- [ ] 4.4　圖片上傳與縮圖　`cindle`
-- [ ] 4.4b　`GET /images/*` 從私有 GCS bucket 串流　`cindle`（規格見 API.md）
+- [x] 4.4　圖片上傳　`cindle`（2026-10-31；2026-11-24 對真的 bucket 實測）
+      後端只驗證、不縮圖；縮圖是後台在瀏覽器裡做，屬於 4.9
+- [x] 4.4b　`GET /images/*` 從私有 GCS bucket 串流　`cindle`（2026-11-24，規格見 API.md）
 - [x] 4.5　React 後台骨架（Vite + TS）　`Claude`　見 [`web/admin/`](../web/admin/)
 - [ ] 4.6　登入流程與 token 附加　`Claude`
       程式碼完成；等 cindle 用真的 Google 帳號登入一次確認
@@ -187,9 +188,9 @@
 | `POST /api/tags` | ✅ | ✅ | 2b、12b、12c、12d | 用 `Create`，已存在回 409 |
 | `PUT /api/tags/{slug}` | ✅ | ✅ | 13、13b | 不存在回 404，不會建立；格式檢查在 `TagStore.Get` |
 | POST／PATCH 文章檢查 `tagSlugs` | ✅ | ✅ | 11b | handler 逐一呼叫 `TagStore.Get`，有不存在的回 400，列出全部不存在的 slug |
-| `POST /api/uploads` | ✅ | ✅ | 14 | 前端縮圖，後端只驗證（10 MB、四種格式、長邊 ≤ 1600）後原樣寫進 GCS，寬高放物件 metadata。**還沒對真的 bucket 跑過** |
-| `GET /images/{path...}` | ⬜ | ⬜ | 15、16 | 4.4b，公開路由，不經過 `RequireAdmin` |
-| `POST /api/cache/purge` | — | ⬜ | 17 | 依賴 2A.6 `internal/cache` |
+| `POST /api/uploads` | ✅ | ✅ | 14 | 前端縮圖，後端只驗證（10 MB、四種格式、長邊 ≤ 1600）後原樣寫進 GCS，寬高放物件 metadata。2026-11-24 對真的 bucket 跑過：`content_type`、大小、`width`／`height` metadata 都對 |
+| `GET /images/{path...}` | ✅ | ✅ | 15～16b | 公開路由，掛在 `root` 不經過 `RequireAdmin`，路由要寫 `{path...}` 才吃得下斜線。路徑先過 regex（跟上傳產生的物件名同格式）才去 GCS；`Stat` → 比對 `If-None-Match` 回 304（不 `Open`）→ `Open` 串流。ETag 是 GCS 的 etag 補上雙引號，`immutable` 只在成功時設。2026-11-24 對真的 bucket 跑過。可優化：HEAD 也會把整個檔案從 GCS 讀出來 |
+| `POST /api/cache/purge` | — | ⬜ | 17 | 依賴 2A.6 `internal/cache`，而快取要等公開頁面（2A.5）有東西可以存，所以排在公開頁面之後 |
 
 > `tags.count` 決定用聚合查詢即時算（2026-10-07），不存在 `tags` 文件裡
 > （[`FIRESTORE-GO.md`](FIRESTORE-GO.md)「一個可能讓你不用維護 count 的選項」）。
@@ -254,15 +255,26 @@
 ## 目前狀態
 
 Phase 0、1、2B 完成。Phase 4 的登入與 middleware、後台 React（4.5、4.7）完成。
-後台 API 完成 9 支：文章 5 支（`POST /api/posts`、`GET /api/posts/{id}`、`GET /api/posts`、`DELETE /api/posts/{id}`、
+後台 API 完成 11 支（全部 12 支只剩快取失效）：文章 5 支（`POST /api/posts`、`GET /api/posts/{id}`、`GET /api/posts`、`DELETE /api/posts/{id}`、
 `POST /api/posts/{id}/publish`）皆已用真的 Firestore 實測；`PATCH /api/posts/{id}` 完成一般欄位（連帶動作待補）；
 標籤 3 支（`GET`、`POST /api/tags`、`PUT /api/tags/{slug}`）與文章的 `tagSlugs` 檢查在 2026-10-26 完成，
-單元測試與模擬器測試都通過，還沒用 `api_test.http` 對真的 Firestore 跑。`POST /api/uploads` 在 2026-10-31 完成，單元測試通過，還沒對真的 bucket 跑。handler 外層掛了 `Recover`，panic 會回 500 而不是切斷連線。2026-10-24 Go 升到 1.27.3（修掉 1.27.1 的 13 個可呼叫標準庫漏洞）、`golang.org/x/net` 升到 v0.60.0（修掉同一批 HTTP/2 漏洞），govulncheck 0 個可呼叫漏洞。
+單元測試與模擬器測試都通過，還沒用 `api_test.http` 對真的 Firestore 跑。圖片 2 支：`POST /api/uploads`（2026-10-31）與 `GET /images/{path...}`（2026-11-24），
+store 用假的 GCS server 寫了單元測試，兩支都已對真的 bucket 跑過（`api_test.http` 14～16b）。handler 外層掛了 `Recover`，panic 會回 500 而不是切斷連線。2026-10-24 Go 升到 1.27.3（修掉 1.27.1 的 13 個可呼叫標準庫漏洞）、`golang.org/x/net` 升到 v0.60.0（修掉同一批 HTTP/2 漏洞），govulncheck 0 個可呼叫漏洞。
 
-下一步：先用 `api_test.http` 對真的 Firestore 跑標籤那幾則（2b、3、11b、12～13b），
-用第 14 則對真的 bucket 上傳一次，確認 `content_type` 與寬高 metadata；
-再依 4.3 的表繼續：`GET /images/{path...}` → 快取失效。
-`internal/markdown`（2A.3）做完後，回頭補 PATCH 的 html/toc 重算。
+後台 API 只剩 `POST /api/cache/purge`，它要清的是公開頁面的快取，所以排在公開頁面之後。
+
+下一步（cindle，後端）：
+1. 2A.3 `internal/markdown`——做完回頭補 PATCH 的 html/toc 重算；內文 `<img>` 寬高用 `ImageStore.Stat` 讀 metadata
+2. 2A.1 補讀 `BLOG_BASE_URL`、組 `view.Site`
+3. 2A.5 公開頁面 handler
+4. 2A.6 `internal/cache` → `POST /api/cache/purge` → PATCH 的失效快取
+
+同時可以做（Claude，前端）：4.6 真實登入走一遍、4.9 圖片拖放（上傳與讀圖都通了）、4.8 即時預覽、
+2B.9 把定案的版面搬進 `web/templates`（2A.5 會用到）。
+
+還沒對真的 Firestore 跑過的：標籤那幾則（2b、11b、12～13d），第 12 則會順便確認 `CountPublished` 要不要另外建索引。
+沒有刪除圖片的 API（2026-11-24 決定先不做）：沒被引用的圖存著幾乎不花錢，
+真的要清再寫一支 dry-run 優先的清理腳本，掃文章的引用、只刪放超過 N 天的。
 `tags.count` 改用聚合查詢即時算，寫入的 API 都不用維護它（見 4.3 表下方的說明）。
 
 自動化測試（2026-10-15）：`internal/handler` 用假的 store 測每個端點的驗證、錯誤對應與回應格式；

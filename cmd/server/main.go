@@ -69,6 +69,7 @@ func main() {
 	postsHandler := h.NewPostHandler(postsRepo, tagRepo)
 	tagHandler := h.NewTagHandler(tagRepo, postsRepo)
 	uploadHandler := h.NewUploadHandler(imageRepo)
+	imageHandler := h.NewImageHandler(imageRepo)
 
 	// init api handler
 	api := http.NewServeMux()
@@ -94,6 +95,9 @@ func main() {
 	// init Auth middleware
 	authenticator := auth.NewAuthenticator(fbClient, cfg.Firebase.AdminUIDs)
 	root.Handle("/api/", http.StripPrefix("/api", authenticator.RequireAdmin(api)))
+
+	// images
+	root.HandleFunc("GET /images/{path...}", imageHandler.Get)
 
 	// middleware
 	var handler http.Handler = root

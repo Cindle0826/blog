@@ -14,10 +14,10 @@
 #
 # 「Run all requests in file」可以一次跑完整個流程。
 #
-# ── 目前的進度（2026-10-31）──────────────────────────────────
+# ── 目前的進度（2026-11-24）──────────────────────────────────
 #
-# 1～14e 對應已經實作的端點（文章、標籤、上傳），應該全綠。
-# 15、16（GET /images）與 17（快取失效）還沒做，現在會是 404，這是預期的：
+# 1～16b 對應已經實作的端點（文章、標籤、上傳、讀圖），應該全綠。
+# 17（快取失效）還沒做，現在會是 404，這是預期的：
 # 這份檔案是你的靶子，實作到哪就有幾則變綠。
 #
 # 第 14 則會真的寫一張圖進 bucket，而且沒有刪除的 API——每跑一次就多一個物件。
@@ -675,6 +675,7 @@ Content-Type: image/png
     });
 
     client.global.set("uploadedPath", r.path);
+    client.global.set("uploadedBytes", String(r.bytes));
 %}
 
 
@@ -794,34 +795,186 @@ Content-Type: application/json
 ### 15. 讀取圖片（公開路由，不帶 token）
 ### ═══════════════════════════════════════════════════════════
 #
-# 還沒實作（PLAN.md 4.4b），現在是 404。
+# 15～15f 都用第 14 則存下的 uploadedPath。單獨跑的話，先跑一次第 14 則。
+# bucket 是空的時候沒有任何圖可以讀，ETag 那幾則也就測不到。
+#
+# Go 會把標頭名稱正規化成 Etag，所以下面讀標頭時兩種寫法都試。
 
 # @no-log
 GET {{apiBase}}{{uploadedPath}}
 
 > {%
+    function header(name) {
+        return response.headers.valueOf(name) || response.headers.valueOf(name.toLowerCase()) ||
+            response.headers.valueOf(name.charAt(0) + name.slice(1).toLowerCase());
+    }
+
     client.test("匿名就能讀", function() {
         client.assert(response.status === 200,
-            "得到 " + response.status + "。這是公開路由，讀者的瀏覽器不會帶 token");
+            "得到 " + response.status + "。這是公開路由，讀者的瀏覽器不會帶 token。" +
+            "401 代表路由掛到 api 底下了；text/plain 的 404 代表路由沒寫 {path...}");
+    });
+
+    client.test("Content-Type 來自 GCS 的 metadata", function() {
+        const ct = header("Content-Type") || "";
+        client.assert(ct === "image/png",
+            "sample.png 應該是 image/png，得到：" + ct);
+    });
+
+    client.test("Content-Length 等於上傳時的大小", function() {
+        const cl = header("Content-Length");
+        client.assert(cl === client.global.get("uploadedBytes"),
+            "上傳時回 bytes=" + client.global.get("uploadedBytes") + "，這裡得到 " + cl);
     });
 
     client.test("快取標頭設對了", function() {
-        const cc = response.headers.valueOf("Cache-Control") || "";
+        const cc = header("Cache-Control") || "";
         client.assert(cc.indexOf("immutable") >= 0,
             "檔名帶 UUID、內容永不改變，應該設 immutable。得到：" + cc);
         client.assert(cc.indexOf("max-age=31536000") >= 0,
             "應該快取一年。得到：" + cc);
+        client.assert(cc.indexOf("public") >= 0,
+            "要讓 CDN 也能快取，得是 public。得到：" + cc);
     });
 
-    client.test("有 ETag", function() {
-        client.assert(response.headers.valueOf("ETag") !== null,
-            "需要 ETag 才能回 304，否則 CDN 每次 miss 都要重傳整個檔案");
+    client.test("ETag 有加雙引號", function() {
+        const etag = header("ETag");
+        client.assert(etag !== null && etag !== undefined, "沒有 ETag，就沒辦法回 304");
+        client.assert(/^".+"$/.test(etag),
+            "HTTP 規定 ETag 要包在雙引號裡，得到：" + etag +
+            "。GCS 給的值沒有引號，要自己補");
+        client.global.set("uploadedETag", etag);
+    });
+%}
+
+
+### 15b. 帶上一樣的 ETag → 304，不傳內容
+### ═══════════════════════════════════════════════════════════
+#
+# 這就是瀏覽器或 CDN 快取過期時會自動做的事：把上次拿到的 ETag 放進
+# If-None-Match 問一次。curl 和這裡都沒有快取，所以要手動帶。
+
+# @no-log
+GET {{apiBase}}{{uploadedPath}}
+If-None-Match: {{uploadedETag}}
+
+> {%
+    function header(name) {
+        return response.headers.valueOf(name) || response.headers.valueOf(name.toLowerCase()) ||
+            response.headers.valueOf(name.charAt(0) + name.slice(1).toLowerCase());
+    }
+
+    client.test("回 304", function() {
+        client.assert(response.status === 304,
+            "得到 " + response.status + "。如果是 200，檢查比對時兩邊是不是都有雙引號");
+    });
+
+    client.test("304 也要帶 ETag 與 Cache-Control", function() {
+        client.assert(header("ETag") === client.global.get("uploadedETag"),
+            "得到 " + header("ETag"));
+        client.assert((header("Cache-Control") || "").indexOf("immutable") >= 0,
+            "304 也要帶 Cache-Control，否則快取會用舊的規則重新計算過期時間");
+    });
+
+    client.test("沒有內容", function() {
+        client.assert(!response.body, "304 不可以有 body");
+    });
+%}
+
+
+### 15c. ETag 不一樣 → 200，整張圖重傳
+### ═══════════════════════════════════════════════════════════
+# @no-log
+GET {{apiBase}}{{uploadedPath}}
+If-None-Match: "not-the-real-etag"
+
+> {%
+    client.test("回 200", function() {
+        client.assert(response.status === 200,
+            "得到 " + response.status + "。ETag 不同代表快取裡那份舊了，要回完整的圖");
+    });
+%}
+
+
+### 15d. HEAD → 只有標頭
+### ═══════════════════════════════════════════════════════════
+#
+# Go 的 "GET /images/..." 路由也會接 HEAD，net/http 會自動把 body 丟掉。
+# 這就是 curl -I 送出去的請求。
+
+# @no-log
+HEAD {{apiBase}}{{uploadedPath}}
+
+> {%
+    function header(name) {
+        return response.headers.valueOf(name) || response.headers.valueOf(name.toLowerCase()) ||
+            response.headers.valueOf(name.charAt(0) + name.slice(1).toLowerCase());
+    }
+
+    client.test("回 200 且標頭跟 GET 一樣", function() {
+        client.assert(response.status === 200, "得到 " + response.status);
+        client.assert(header("Content-Length") === client.global.get("uploadedBytes"),
+            "Content-Length 應為 " + client.global.get("uploadedBytes") + "，得到 " + header("Content-Length"));
+        client.assert(header("ETag") === client.global.get("uploadedETag"),
+            "ETag 應與 GET 相同，得到 " + header("ETag"));
+    });
+%}
+
+
+### 15e. 格式正確但不存在 → 404，而且不能被快取一年
+### ═══════════════════════════════════════════════════════════
+#
+# 路徑通過 regex，會真的去 GCS Stat，拿到 not found。
+
+# @no-log
+GET {{apiBase}}/images/2026/01/00000000-0000-0000-0000-000000000000.png
+
+> {%
+    function header(name) {
+        return response.headers.valueOf(name) || response.headers.valueOf(name.toLowerCase()) ||
+            response.headers.valueOf(name.charAt(0) + name.slice(1).toLowerCase());
+    }
+
+    client.test("回 404 not_found", function() {
+        client.assert(response.status === 404, "得到 " + response.status);
+        const code = ((response.body || {}).error || {}).code;
+        client.assert(code === "not_found", "得到 " + code);
+    });
+
+    client.test("404 沒有 immutable", function() {
+        const cc = header("Cache-Control") || "";
+        client.assert(cc.indexOf("immutable") < 0,
+            "404 被快取一年的話，之後真的上傳了同名檔案也讀不到。得到：" + cc);
+    });
+%}
+
+
+### 15f. 路徑格式不對 → 404，不去 GCS
+### ═══════════════════════════════════════════════════════════
+#
+# 只有 {yyyy}/{mm}/{uuid}.{jpg|png|gif|webp} 會往下查 GCS，其他直接 404。
+# 掃描器每天會打一堆這種路徑，擋在 regex 就不會花 GCS 的請求費。
+
+# @no-log
+GET {{apiBase}}/images/sample.png
+
+> {%
+    client.test("回 404 not_found，body 是一份 JSON", function() {
+        client.assert(response.status === 404, "得到 " + response.status);
+        const code = ((response.body || {}).error || {}).code;
+        client.assert(code === "not_found",
+            "得到 " + code + "。如果 body 是 JSON 後面又接一行 404 page not found，" +
+            "代表錯誤寫了兩次（WriteError 之後又呼叫了 http.NotFound）");
     });
 %}
 
 
 ### 16. 路徑穿越必須被擋
 ### ═══════════════════════════════════════════════════════════
+#
+# Go 的 ServeMux 會先把 .. 清掉並 307 轉址到 /etc/passwd，根本進不到 handler。
+# 16b 用 %2F 編碼的斜線繞過清理，才會真的進到 handler，靠 regex 擋。
+
 # @no-log
 GET {{apiBase}}/images/../../etc/passwd
 
@@ -830,6 +983,19 @@ GET {{apiBase}}/images/../../etc/passwd
         client.assert(response.status !== 200,
             "路徑穿越沒擋住。雖然 GCS 的物件名是扁平的、.. 不會真的跳出目錄，" +
             "但別依賴那個——這道檢查是寫給未來把儲存換成本機檔案系統的人看的");
+    });
+%}
+
+
+### 16b. 編碼過的路徑穿越 → 404
+### ═══════════════════════════════════════════════════════════
+# @no-log
+GET {{apiBase}}/images/..%2F..%2Fetc%2Fpasswd
+
+> {%
+    client.test("回 404", function() {
+        client.assert(response.status === 404,
+            "得到 " + response.status + "。PathValue 會把 %2F 解回 /，要靠 regex 擋下來");
     });
 %}
 

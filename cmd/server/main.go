@@ -80,12 +80,14 @@ func main() {
 	api.HandleFunc("DELETE /posts/{id}", postsHandler.Delete)
 	api.HandleFunc("POST /posts/{id}/publish", postsHandler.SetPublished)
 	api.HandleFunc("PATCH /posts/{id}", postsHandler.Update)
-	api.HandleFunc("POST /uploads", uploadHandler.Create)
 
 	// tags
 	api.HandleFunc("GET /tags", tagHandler.List)
 	api.HandleFunc("POST /tags", tagHandler.Create)
 	api.HandleFunc("PUT /tags/{slug}", tagHandler.Update)
+
+	// uploads
+	api.HandleFunc("POST /uploads", uploadHandler.Create)
 
 	root := http.NewServeMux()
 
